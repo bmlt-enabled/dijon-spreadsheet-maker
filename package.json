@@ -10,6 +10,8 @@
   "devDependencies": {
     "@sveltejs/adapter-auto": "next",
     "@sveltejs/kit": "next",
+    "date-picker-svelte": "^2.0.0",
+    "path": "^0.12.7",
     "svelte": "^3.44.0"
   },
   "type": "module"
