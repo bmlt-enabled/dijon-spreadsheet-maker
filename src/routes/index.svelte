@@ -3,70 +3,91 @@
 </svelte:head>
 
 <script>
+  import { onMount } from 'svelte';
   import { DateInput } from 'date-picker-svelte'
-  let dijon_server = 'https://dijon.jrb.lol';
-  let server_promise = fetch_servers();
-  let snapshots_promise = fetch_snapshots();
+  import { RootServer } from '$lib/RootServer';
+  import { Snapshot } from '$lib/Snapshot';
 
-  async function fetch_servers() {
-    const response = await self.fetch(new URL('rootservers', dijon_server));
-    if (response.ok) {
-      return response.json();
-    } else {
-      throw new Error(servers);
+  const dijonBaseUrl = 'https://dijon.jrb.lol';
+  const rootServersUrl = new URL('rootservers', dijonBaseUrl);
+  const snapshotsUrl = new URL('snapshots', dijonBaseUrl);
+  let rootServers;
+  let rootServersError;
+  let snapshots;
+  let snapshotsError;
+  let selectedRootServer;
+  let startDate;
+  let endDate;
+  let startSnapshot;
+  let endSnapshot;
+
+  onMount(() => {
+    fetchRootServers();
+    fetchSnapshots();
+  });
+
+  $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
+  $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
+
+  async function fetchRootServers() {
+    const response = await fetch(rootServersUrl);
+    if (!response.ok) {
+      rootServersError = `Got ${response.status} status from ${url}.`
+      return;
     }
+
+    const _rootServers = [];
+    for (let rawRootServer of await response.json()) {
+      const rootServer = new RootServer(rawRootServer.id, rawRootServer.name, rawRootServer.url);
+      _rootServers.push(rootServer);
+    }
+
+    rootServers = _rootServers;
   }
 
-  // for now just get all the snapshots; later we could just get the snapshots for the selected server
-  async function fetch_snapshots() {
-    const response = await self.fetch(new URL('snapshots', dijon_server));
-    if (response.ok) {
-      return response.json();
-    } else {
-      throw new Error(servers);
+  async function fetchSnapshots() {
+    const response = await fetch(snapshotsUrl);
+    if (!response.ok) {
+      snapshotsError = `Got ${response.status} status from ${url}.`
+      return;
     }
-  }
 
-  let selected_server;
+    const _snapshots = [];
+    for (let rawSnapshot of await response.json()) {
+      const snapshot = new Snapshot(rawSnapshot.root_server_id, rawSnapshot.date);
+      _snapshots.push(snapshot);
+    }
+
+    snapshots = _snapshots;
+  }
 
   // find the most recent snapshot (if any) that was retrieved on or before d for the currently selected server
-  function find_snapshot(snapshots, d) {
+  function findSnapshot(desiredDate) {
     let result;
-    if (snapshots) {
-      for (let i = 0; i < snapshots.length; i++) {
-        let s = snapshots[i];
-        if (s.root_server_id == selected_server && new Date(s.date) <= d && (!result || new Date(result.date) < new Date(s.date) )) {
-          result = s;
-        }
+
+    for (let snapshot of snapshots ?? []) {
+      if (snapshot.rootServerId !== selectedRootServer.id) {
+        continue;
       }
+
+      if (snapshot.date > desiredDate) {
+        continue;
+      }
+
+      if (!result) {
+        result = snapshot;
+        continue;
+      }
+
+      if (snapshot.date <= result.date) {
+        continue;
+      }
+
+      result = snapshot;
     }
+
     return result;
   }
-
-  // get a displayable date string from a date d (which might be null)
-  function get_date_string(d) {
-    if (d) {
-      return d.toDateString();
-    } else {
-      return 'none';
-    }
-  }
-
-  // get a displayable date string from a shapshot
-  function get_snapshot_date(s) {
-    if (s) {
-      return s.date;
-    } else {
-      return 'none';
-    }
-  }
-
-  let start_date;
-  let end_date;
-  // I'd like to have variables defined here for start_snapshot and end_snapshot, not sure how to get at snapshots!
-  // $: start_snapshot = find_snapshot(snapshots, start_date);
-  // $: end_snapshot = find_snapshot(snapshots, end_date);
-
 </script>
 
 <section>
@@ -83,47 +104,52 @@
 
 <section>
   <h2>Server:</h2>
-	{#await server_promise}
-	  <p>...retrieving servers</p>
-  {:then servers}
+  {#if rootServers}
     <form>
-      <select bind:value={selected_server}>
-        {#each servers as server }
-          <option value={server.id}>
+      <select bind:value={selectedRootServer}>
+        {#each rootServers as server }
+          <option value={server}>
             {server.name}
           </option>
         {/each}
       </select>
     </form>
-  {:catch error}
-    <p style="color: red">{error.message}</p>
-  {/await}
+  {:else if rootServersError}
+    <p style="color: red">{rootServersError.message}</p>
+  {:else}
+    <p>...retrieving servers</p>
+  {/if}
 </section>
 
 <section>
-	<h2>Start and End Dates:</h2>
-	  Start: <DateInput bind:value={start_date} />
+  {#if rootServers && snapshots}
+	  <h2>Start and End Dates:</h2>
+	  Start: <DateInput bind:value={startDate} />
 	  <p></p>
-	  End: <DateInput bind:value={end_date} />
+	  End: <DateInput bind:value={endDate} />
+  {/if}
 </section>
 
 <section>
 	<h2>Current Selection</h2>
-	{#await snapshots_promise}
-	  <p>...retrieving snapshots</p>
-	{:then snapshots}
-	  <p>selected server {selected_server ? selected_server : '[waiting...]'}</p>
-	  <p>Start date: {get_date_string(start_date)}</p>
-    <p>End date: {get_date_string(end_date)}</p>
-    <p>closest snapshot to start date: {get_snapshot_date(find_snapshot(snapshots, start_date))}</p>
-    <p>closest snapshot to end date: {get_snapshot_date(find_snapshot(snapshots, end_date))}</p>
-	{:catch error}
-    <p style="color: red">{error.message}</p>
-	{/await}
+  {#if snapshots}
+    <p>selected server {selectedRootServer?.name ?? '[waiting...]'}</p>
+    <p>Start date: {startDate?.toDateString() ?? 'none'}</p>
+    <p>End date: {endDate?.toDateString() ?? 'none'}</p>
+    {#if startDate}
+      <p>closest snapshot to start date: {startSnapshot?.date ?? 'none'}</p>
+    {/if}
+    {#if endDate}
+      <p>closest snapshot to end date: {endSnapshot?.date ?? 'none'}</p>
+    {/if}
+  {:else if snapshotsError}
+    <p style="color: red">{snapshotsError.message}</p>
+  {:else}
+    <p>...retrieving snapshots</p>
+  {/if}
 </section>
 
 <style>
-
 	section {
 		display: flex;
 		flex-direction: column;
