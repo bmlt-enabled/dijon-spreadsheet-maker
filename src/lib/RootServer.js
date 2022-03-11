@@ -1,7 +1,7 @@
 export class RootServer {
-    constructor(id, name, url) {
-        this.id = id;
-        this.name = name;
-        this.url = url;
+    constructor(json) {
+        this.id = json.id;
+        this.name = json.name;
+        this.url = json.url;
     }
 }

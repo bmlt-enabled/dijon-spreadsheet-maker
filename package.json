@@ -12,7 +12,9 @@
     "@sveltejs/kit": "next",
     "date-picker-svelte": "^2.0.0",
     "path": "^0.12.7",
-    "svelte": "^3.44.0"
+    "svelte": "^3.44.0",
+    "xlsx": "^0.18.3",
+    "xlsx-js-style": "^1.0.0"
   },
   "type": "module"
 }
