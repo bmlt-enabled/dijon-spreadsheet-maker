@@ -135,10 +135,16 @@
         return Math.max(...snapshots.map( s => s.date));
     }
 
-    // bit of a hack -- function to call when the server selection changes
+    // bit of a hack -- function to call when the server selection changes (the reactive declarations ought to take care of this,
+    // but don't seem to get invoked soon enough)
     function serverSelectionChanged() {
         fetchSnapshots();
         fetchServiceBodies(selectedRootServer, endSnapshot);
+        // there may be a more graceful way to do this - anyway, the issue is that the first and last possible dates may have changed
+        // when the server selection is changed, and so the startDate or endDate might be invalid.  Better would be to find out if
+        // that date still works
+        startDate = null;
+        endDate = null;
     }
 
     async function fetchServiceBodies(server, snapshot) {
@@ -438,8 +444,8 @@
     <p>Selected server: {selectedRootServer?.name ?? 'none'}<br/>
     Number of service bodies: {allServiceBodies?.length ?? 'none'}<br/>
     <!-- use toDateString() to show just date -->
-    First snapshot date: {firstSnapshotDate ? (new Date(firstSnapshotDate)).toDateString() : 'none'}<br/>
-    Last snapshot date: {lastSnapshotDate ? (new Date(lastSnapshotDate)).toDateString() : 'none'}<br/>
+    First snapshot date: {firstSnapshotDate ? (new Date(firstSnapshotDate)).toString() : 'none'}<br/>
+    Last snapshot date: {lastSnapshotDate ? (new Date(lastSnapshotDate)).toString() : 'none'}<br/>
     Start date: {startDate?.toString() ?? 'none'}<br/>
     End date: {endDate?.toString() ?? 'none'}<br/>
     Selected service body: {selectedServiceBody?.name ?? 'none'}</p>
