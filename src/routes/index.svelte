@@ -22,11 +22,11 @@
         'CommitteeName',
         'AreaRegion',
         'ParentName',
+        'Day',
+        'Time',
         'Room',
         'Closed',
         'WheelChr',
-        'Day',
-        'Time',
         'Place',
         'Address',
         'City',
@@ -39,20 +39,20 @@
         'Format3',
         'Format4',
         'Format5',
-        'Delete',
+        'Language1',
+        'Language2',
+        'Language3',
+        'unpublished',
+        'VirtualMeetingLink',
+        'VirtualMeetingInfo',
+        'PhoneMeetingNumber',
+        'Country',
         'LastChanged',
         'Longitude',
         'Latitude',
         'TimeZone',
         'bmlt_id',
-        'unpublished',
-        'VirtualMeetingLink',
-        'VirtualMeetingInfo',
-        'PhoneMeetingNumber',
-        'Language1',
-        'Language2',
-        'Language3',
-        'Country'];
+    ];
     // styles for export spreadsheet
     const headerStyle = {font: {bold: true}};
     const changedMeetingStyle = {fill: {fgColor: {rgb: "FF002B"}}};
@@ -308,11 +308,11 @@
             meeting.name,                                  // CommitteeName
             meeting.serviceBodyWorldId(allServiceBodies),  // AreaRegion
             meeting.serviceBodyName(allServiceBodies),     // ParentName
+            meeting.dayString(),                           // Day
+            meeting.start_time,                            // Time -- TODO fix the formatting (no seconds, colons etc)
             meeting.nonNawsFormats(),                      // Room  this is actually non-NAWS formats, despite the column name
             meeting.openOrClosed(),                        // Closed
             meeting.wheelChairAccessible(),                // WheelChr
-            meeting.dayString(),                           // Day
-            meeting.start_time,                            // Time -- TODO fix the formatting (no seconds, colons etc)
             meeting.location_text,                         // Place
             meeting.location_street,                       // Address
             meeting.location_municipality,                 // City
@@ -325,20 +325,19 @@
             formats[2],                                    // Format3
             formats[3],                                    // Format4
             formats[4],                                    // Format5
-            deleted,                                       // Delete
+            meeting.language(),                            // Language1
+            '',                                            // Language2 -- maybe omit since always empty?
+            '',                                            // Language3 -- maybe omit since always empty?
+            meeting.published ? '' : '1',                  // unpublished
+            meeting.virtual_meeting_link,                  // VirtualMeetingLink
+            meeting.virtual_meeting_additional_info,       // VirtualMeetingInfo
+            meeting.phone_meeting_number,                  // PhoneMeetingNumber
+            meeting.location_nation,                       // Country
             '',                                            // LastChanged -- not available in current server data.  Omit this column?
             meeting.longitude,                             // Longitude
             meeting.latitude,                              // Latitude
             meeting.time_zone,                             // TimeZone
             meeting.bmlt_id,                               // bmlt_id
-            meeting.published ? '' : '1',                  // unpublished
-            meeting.virtual_meeting_link,                  // VirtualMeetingLink
-            meeting.virtual_meeting_additional_info,       // VirtualMeetingInfo
-            meeting.phone_meeting_number,                  // PhoneMeetingNumber
-            meeting.language(),                            // Language1
-            '',                                            // Language2 -- maybe omit since always empty?
-            '',                                            // Language3 -- maybe omit since always empty?
-            meeting.location_nation                        // Country
         ];
     }
 
