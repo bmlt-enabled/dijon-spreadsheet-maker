@@ -273,7 +273,7 @@
                     styleEntireRow(ws, lastRow, newMeetingStyle);
                     break;
                 case 'MeetingDeleted':
-                    oldRow = getRowForMeeting(change.old_meeting, 'D');
+                    oldRow = getRowForMeeting(change.old_meeting);
                     addMeetingData(ws, oldRow);
                     styleEntireRow(ws, lastRow, deletedMeetingStyle);
                     break;
@@ -301,7 +301,7 @@
         XLSX.utils.sheet_add_aoa(ws, [newRow], {origin: -1});
     }
 
-    function getRowForMeeting(meeting, deleted = '') {
+    function getRowForMeeting(meeting) {
         let formats = meeting.nawsFormats();
         return [
             meeting.world_id,                              // Committee
