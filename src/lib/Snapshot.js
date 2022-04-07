@@ -1,6 +1,8 @@
+import { makeDate } from '$lib/makeDate';
+
 export class Snapshot {
-    constructor(rootServerId, date) {
+    constructor(rootServerId, rawDate) {
         this.rootServerId = rootServerId;
-        this.date = new Date(date);
+        this.date = makeDate(rawDate);
     }
 }

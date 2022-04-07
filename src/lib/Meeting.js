@@ -1,5 +1,7 @@
+import { format } from 'date-fns';
 import { Format } from '$lib/Format';
 import { ServiceBody } from '$lib/ServiceBody';
+import { makeDate } from '$lib/makeDate';
 
 export class Meeting {
 
@@ -36,6 +38,7 @@ export class Meeting {
         this.naws_code_override = json.naws_code_override;
         this.service_body = new ServiceBody(json.service_body);
         this.formats = json.formats.map(f => new Format(f));
+        this.last_changed = makeDate(json.last_changed);
     }
 
     dayString() {
@@ -139,5 +142,12 @@ export class Meeting {
         return '';
     }
 
+    lastChangedExcelFormat() {
+        if ( this.last_changed ) {
+            return format(this.last_changed, 'MM/dd/yyy');
+        } else {
+            return '';
+        }
+    }
 
 }

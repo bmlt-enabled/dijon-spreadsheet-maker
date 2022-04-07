@@ -4,84 +4,49 @@
 
 <script>
     import { onMount } from 'svelte';
+    import { format } from 'date-fns';
     import { DateInput } from 'date-picker-svelte'
+    import * as XLSX from 'xlsx-js-style';  // the open source version of SheetJS doesn't handle styling - use this fork instead
     import { Change } from '$lib/Change';
     import { Format } from '$lib/Format';
     import { Meeting } from '$lib/Meeting';
     import { RootServer } from '$lib/RootServer';
     import { ServiceBody } from '$lib/ServiceBody';
     import { Snapshot } from '$lib/Snapshot';
-    // import * as XLSX from 'xlsx/xlsx.mjs';
-    // the open source version of SheetJS doesn't handle styling - use this fork instead:
-    import * as XLSX from 'xlsx-js-style';
+    import { makeDate } from '$lib/makeDate';
 
     const dijonBaseUrl = 'https://dijon.jrb.lol';
     const rootServersUrl = new URL('rootservers', dijonBaseUrl);
-    const exportSpreadsheetHeaders = [
-        'Committee',
-        'CommitteeName',
-        'AreaRegion',
-        'ParentName',
-        'Day',
-        'Time',
-        'Room',
-        'Closed',
-        'WheelChr',
-        'Place',
-        'Address',
-        'City',
-        'LocBorough',
-        'State',
-        'Zip',
-        'Directions',
-        'Format1',
-        'Format2',
-        'Format3',
-        'Format4',
-        'Format5',
-        'Language1',
-        'Language2',
-        'Language3',
-        'unpublished',
-        'VirtualMeetingLink',
-        'VirtualMeetingInfo',
-        'PhoneMeetingNumber',
-        'Country',
-        'LastChanged',
-        'Longitude',
-        'Latitude',
-        'TimeZone',
-        'bmlt_id',
-    ];
-    // styles for export spreadsheet
-    const headerStyle = {font: {bold: true}};
-    const changedMeetingStyle = {fill: {fgColor: {rgb: "FF002B"}}};
-    const newMeetingStyle = {fill: {fgColor: {rgb: "4D88FF"}}};
-    const deletedMeetingStyle = {font: {strike: true}};
     let rootServers;
     let rootServersError;
-    let snapshots;
-    let snapshotsError;
     let selectedRootServer;
-    let firstSnapshotDate;   // date of the first snapshot for the selected server
-    let lastSnapshotDate;    // date of the last snapshot for the selected server
-    let startDate;
-    let endDate;
-    let startSnapshot;
-    let endSnapshot;
-    let allServiceBodies;
+    let snapshots;         // all snapshots for the selected server
+    let snapshotsError;
+    let firstSnapshot;     // first snapshot for the selected server
+    let lastSnapshot;      // last snapshot for the selected server
+    let startDate;         // start date as selected from the calendar
+    let endDate;           // end date as selected from the calendar
+    let startSnapshot;     // closest available snapshot on or before startDate
+    let endSnapshot;       // closest available snapshot on or before endDate
+    let allServiceBodies;  // service bodies for the root server as of last snapshot date
     let serviceBodies;
     let selectedServiceBody;
     let serviceBodiesError;
     let selectFromOnlyZonesAndRegions = true;
     let changesError;
 
+    // styles for export spreadsheet
+    const headerStyle = {font: {bold: true}};
+    const changedMeetingStyle = {fill: {fgColor: {rgb: "FF002B"}}};
+    const newMeetingStyle = {fill: {fgColor: {rgb: "4D88FF"}}};
+    const deletedMeetingStyle = {font: {strike: true}};
+
     onMount(() => {
         fetchRootServers();
     });
 
-    $: selectedRootServer && snapshots && (firstSnapshotDate = findFirstSnapshot());
-    $: selectedRootServer && snapshots && (lastSnapshotDate = findLastSnapshot());
+    $: selectedRootServer && snapshots && (firstSnapshot = findFirstSnapshot());
+    $: selectedRootServer && snapshots && (lastSnapshot = findLastSnapshot());
     $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
     $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
     $: selectedRootServer && endSnapshot && fetchServiceBodies(selectedRootServer, endSnapshot);
@@ -128,11 +93,23 @@
     }
 
     function findFirstSnapshot() {
-        return Math.min(...snapshots.map( s => s.date));
+        let s = null;
+        for ( let i = 0; i < snapshots.length; i++ ) {
+            if ( !s || snapshots[i].date < s.date ) {
+                s = snapshots[i];
+            }
+        }
+        return s;
     }
 
     function findLastSnapshot() {
-        return Math.max(...snapshots.map( s => s.date));
+        let s = null;
+        for ( let i = 0; i < snapshots.length; i++ ) {
+            if ( !s || snapshots[i].date > s.date ) {
+                s = snapshots[i];
+            }
+        }
+        return s;
     }
 
     // bit of a hack -- function to call when the server selection changes (the reactive declarations ought to take care of this,
@@ -145,15 +122,15 @@
         // that date still works
         startDate = null;
         endDate = null;
+        selectedServiceBody = null;
     }
 
     async function fetchServiceBodies(server, snapshot) {
         if ( server && snapshot ) {
-            const d = `${snapshot.date.getFullYear()}-${snapshot.date.getMonth()+1}-${snapshot.date.getDate()}`;
-            const serviceBodiesUrl = new URL(`rootservers/${server.id}/snapshots/${d}/servicebodies`, dijonBaseUrl);
+            const serviceBodiesUrl = new URL(`rootservers/${server.id}/snapshots/${format(snapshot.date, 'yyyy-MM-dd')}/servicebodies`, dijonBaseUrl);
             const response = await fetch(serviceBodiesUrl);
             if (!response.ok) {
-                serviceBodiesError = `Got ${response.status} status from ${url}.`
+                serviceBodiesError = `Got ${response.status} status from ${serviceBodiesUrl}.`
                 return;
             }
             const _allServiceBodies = [];
@@ -248,15 +225,15 @@
         let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders]);
         styleEntireRow(ws, 0, headerStyle);
         // for the changesUrl,    need to wait until root server, service body, and dates are known
-        let startDateStr = `${startDate.getFullYear()}-${startDate.getMonth()+1}-${startDate.getDate()}`;
-        let endDateStr = `${endDate.getFullYear()}-${endDate.getMonth()+1}-${endDate.getDate()}`;
-        let changesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/changes`, dijonBaseUrl);
-        changesUrl.searchParams.append("start_date", startDateStr);
-        changesUrl.searchParams.append("end_date", endDateStr);
+        const changesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/changes`, dijonBaseUrl);
+        const startSnapshotDateStr = format(startSnapshot.date, 'yyyy-MM-dd');
+        const endSnapshotDateStr = format(endSnapshot.date, 'yyyy-MM-dd');
+        changesUrl.searchParams.append("start_date", startSnapshotDateStr);
+        changesUrl.searchParams.append("end_date", endSnapshotDateStr);
         changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
         const response = await fetch(changesUrl);
         if (!response.ok) {
-            changesError = `Got ${response.status} status from ${url}.`
+            changesError = `Got ${response.status} status from ${changesUrl}.`
             return;
         }
         const rawChanges = await response.json();
@@ -269,18 +246,18 @@
             switch (change.event_type) {
                 case 'MeetingCreated':
                     newRow = getRowForMeeting(change.new_meeting);
-                    addMeetingData(ws, newRow);
+                    addMeetingData(ws, newRow, lastRow);
                     styleEntireRow(ws, lastRow, newMeetingStyle);
                     break;
                 case 'MeetingDeleted':
                     oldRow = getRowForMeeting(change.old_meeting);
-                    addMeetingData(ws, oldRow);
+                    addMeetingData(ws, oldRow, lastRow);
                     styleEntireRow(ws, lastRow, deletedMeetingStyle);
                     break;
                 case 'MeetingUpdated':
                     oldRow = getRowForMeeting(change.old_meeting);
                     newRow = getRowForMeeting(change.new_meeting);
-                    addMeetingData(ws, newRow);
+                    addMeetingData(ws, newRow, lastRow);
                     styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
                     break;
                 default:
@@ -289,18 +266,64 @@
         }
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, ws, "Changes");
-        const fileName = `BMLT_${selectedServiceBody.world_id}_changes_from_${startDateStr}_to_${endDateStr}.xlsx`;
+        const fileName = `BMLT_${selectedServiceBody.world_id}_changes_from_${startSnapshotDateStr}_to_${endSnapshotDateStr}.xlsx`;
         // use writeFile since writeFileXLSX isn't available in the xlsx-js-style fork
         XLSX.writeFile(workbook, fileName);
         alert('generated a spreadsheet!')
     }
 
-    function addMeetingData(ws, row) {
+    function addMeetingData(ws, row, rowIndex) {
         // change nulls to empty strings (nulls in the spreadsheet won't accept the style changes)
         const newRow = row.map( c => c === null ? '' : c);
         XLSX.utils.sheet_add_aoa(ws, [newRow], {origin: -1});
+        // fix the format on the LastChanged column to be a date -- all others can remain general format
+        // (Excel didn't like having an empty value with a date format, hence the check)
+        const lastChangedCol = exportSpreadsheetHeaders.indexOf('LastChanged');
+        if ( row[lastChangedCol] ) {
+            const cell_ref = XLSX.utils.encode_cell({c: exportSpreadsheetHeaders.indexOf('LastChanged'), r: rowIndex});
+            ws[cell_ref].t = 'd';
+        }
     }
 
+    // if you change the headers below, make sure to also change the return value in the getRowForMeeting function
+    const exportSpreadsheetHeaders = [
+        'Committee',
+        'CommitteeName',
+        'AreaRegion',
+        'ParentName',
+        'Day',
+        'Time',
+        'Room',
+        'Closed',
+        'WheelChr',
+        'Place',
+        'Address',
+        'City',
+        'LocBorough',
+        'State',
+        'Zip',
+        'Directions',
+        'Format1',
+        'Format2',
+        'Format3',
+        'Format4',
+        'Format5',
+        'Language1',
+        'Language2',
+        'Language3',
+        'unpublished',
+        'VirtualMeetingLink',
+        'VirtualMeetingInfo',
+        'PhoneMeetingNumber',
+        'Country',
+        'LastChanged',
+        'Longitude',
+        'Latitude',
+        'TimeZone',
+        'bmlt_id',
+    ];
+
+    // if you change the return value in the getRowForMeeting function, be sure to also change exportSpreadsheetHeaders
     function getRowForMeeting(meeting) {
         let formats = meeting.nawsFormats();
         return [
@@ -333,7 +356,7 @@
             meeting.virtual_meeting_additional_info,       // VirtualMeetingInfo
             meeting.phone_meeting_number,                  // PhoneMeetingNumber
             meeting.location_nation,                       // Country
-            '',                                            // LastChanged -- not available in current server data.  Omit this column?
+            meeting.lastChangedExcelFormat(),              // LastChanged
             meeting.longitude,                             // Longitude
             meeting.latitude,                              // Latitude
             meeting.time_zone,                             // TimeZone
@@ -394,12 +417,12 @@
 
 <section>
     <h2>Start and End Dates:</h2>
-    {#if rootServers && snapshots && firstSnapshotDate && lastSnapshotDate}
-        Start: <DateInput format="yyyy-MM-dd" placeholder="2021-12-31"
-            min={new Date(firstSnapshotDate)} max={new Date(lastSnapshotDate)} bind:value={startDate} />
+    {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
+        Start: <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
+            min={firstSnapshot.date} max={lastSnapshot.date} bind:value={startDate} />
         <p></p>
-        End: <DateInput format="yyyy-MM-dd" placeholder="2022-01-31"
-        min={new Date(firstSnapshotDate)} max={new Date(lastSnapshotDate)} bind:value={endDate} />
+        End: <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
+            min={firstSnapshot.date} max={lastSnapshot.date} bind:value={endDate} />
     {:else}
     [first pick a server - that determines which snapshot dates are available]
     {/if}
@@ -427,41 +450,27 @@
     {:else if serviceBodiesError}
         <p style="color: red">{serviceBodiesError.message}</p>
     {:else}
-        <p>first pick a server and end date</p>
+        <p>[first pick a server and end date - available service bodies are as of the snapshot for the end date]</p>
     {/if}
+</section>
+
+<section>
+    <h2>Information for Current Selections</h2>
+    Selected server: {selectedRootServer?.name ?? 'none'}<br/>
+    Number of snapshots: {snapshots?.length ?? 'none'}<br/>
+    First snapshot date: {firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
+    Last snapshot date: {lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
+    Number of service bodies as of end date: {allServiceBodies?.length ?? 'none'}<br/>
+    Selected service body: {selectedServiceBody?.name ?? 'none'}<br/>
+    Closest snapshot to start date: {startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
+    Closest snapshot to end date: {endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
 </section>
 
 <section>
     <p></p>
-    <button on:click={generateSpreadsheet}>
+    <button disabled={ !selectedRootServer || !startSnapshot || !endSnapshot || !selectedServiceBody } on:click={ generateSpreadsheet }>
         Generate spreadsheet
     </button>
-</section>
-
-<section>
-    <h2>Current Selections (temporarily displayed for debugging)</h2>
-    <p>Selected server: {selectedRootServer?.name ?? 'none'}<br/>
-    Number of service bodies: {allServiceBodies?.length ?? 'none'}<br/>
-    <!-- use toDateString() to show just date -->
-    First snapshot date: {firstSnapshotDate ? (new Date(firstSnapshotDate)).toString() : 'none'}<br/>
-    Last snapshot date: {lastSnapshotDate ? (new Date(lastSnapshotDate)).toString() : 'none'}<br/>
-    Start date: {startDate?.toString() ?? 'none'}<br/>
-    End date: {endDate?.toString() ?? 'none'}<br/>
-    Selected service body: {selectedServiceBody?.name ?? 'none'}</p>
-    {#if startDate}
-        <p>closest snapshot to start date: {startSnapshot?.date ?? 'none'}</p>
-    {/if}
-    {#if endDate}
-        <p>closest snapshot to end date: {endSnapshot?.date ?? 'none'}</p>
-    {/if}
-
-    {#if snapshots}
-        <p>{snapshots.length} snapshots found for {selectedRootServer.name}</p>
-    {:else if snapshotsError}
-        <p style="color: red">{snapshotsError.message}</p>
-    {:else}
-        <p>snapshots: null</p>
-    {/if}
 </section>
 
 <style>
