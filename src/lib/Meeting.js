@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { Format } from '$lib/Format';
 import { ServiceBody } from '$lib/ServiceBody';
-import { makeDate } from '$lib/makeDate';
+import { stringToDate } from '$lib/DateUitls';
 
 export class Meeting {
 
@@ -38,7 +38,7 @@ export class Meeting {
         this.naws_code_override = json.naws_code_override;
         this.service_body = new ServiceBody(json.service_body);
         this.formats = json.formats.map(f => new Format(f));
-        this.last_changed = makeDate(json.last_changed);
+        this.last_changed = stringToDate(json.last_changed);
     }
 
     dayString() {

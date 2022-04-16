@@ -4,7 +4,7 @@
 
 <script>
     import { onMount } from 'svelte';
-    import { format } from 'date-fns';
+    import { format, isEqual, isBefore } from 'date-fns';
     import { DateInput } from 'date-picker-svelte'
     import * as XLSX from 'xlsx-js-style';  // the open source version of SheetJS doesn't handle styling - use this fork instead
     import { Change } from '$lib/Change';
@@ -13,7 +13,7 @@
     import { RootServer } from '$lib/RootServer';
     import { ServiceBody } from '$lib/ServiceBody';
     import { Snapshot } from '$lib/Snapshot';
-    import { makeDate } from '$lib/makeDate';
+    import { makePureDate } from '$lib/DateUitls';
 
     const dijonBaseUrl = 'https://dijon.jrb.lol';
     const rootServersUrl = new URL('rootservers', dijonBaseUrl);
@@ -24,8 +24,10 @@
     let snapshotsError;
     let firstSnapshot;     // first snapshot for the selected server
     let lastSnapshot;      // last snapshot for the selected server
-    let startDate;         // start date as selected from the calendar
-    let endDate;           // end date as selected from the calendar
+    let rawStartDate;      // start date as selected from the calendar
+    let startDate;         // start date with time removed
+    let rawEndDate;        // end date as selected from the calendar
+    let endDate;           // end date awith time removed
     let startSnapshot;     // closest available snapshot on or before startDate
     let endSnapshot;       // closest available snapshot on or before endDate
     let allServiceBodies;  // service bodies for the root server as of last snapshot date
@@ -34,6 +36,9 @@
     let serviceBodiesError;
     let selectFromOnlyZonesAndRegions = true;
     let changesError;
+    let dateSelectionError;           // true if the start snapshot date isn't before the end snapshot date
+    let missingStartSnapshotWarning;  // true if there isn't a snapshot exactly on the startDate
+    let missingEndSnapshotWarning;  // true if there isn't a snapshot exactly on the endDate
 
     // styles for export spreadsheet
     const headerStyle = {font: {bold: true}};
@@ -45,11 +50,16 @@
         fetchRootServers();
     });
 
+    $: rawStartDate && (startDate = makePureDate(rawStartDate));
+    $: rawEndDate && (endDate = makePureDate(rawEndDate));
     $: selectedRootServer && snapshots && (firstSnapshot = findFirstSnapshot());
     $: selectedRootServer && snapshots && (lastSnapshot = findLastSnapshot());
     $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
     $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
     $: selectedRootServer && endSnapshot && fetchServiceBodies(selectedRootServer, endSnapshot);
+    $: selectedRootServer && startSnapshot && endSnapshot && (dateSelectionError = !isBefore(startSnapshot.date, endSnapshot.date));
+    $: selectedRootServer && startDate && startSnapshot && (missingStartSnapshotWarning = !isEqual(startSnapshot.date,startDate));
+    $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = !isEqual(endSnapshot.date, endDate));
 
     // This ought to work to keep serviceBodies up-to-date, but changing the selectFromOnlyZonesAndRegions checkbox doesn't
     // change the menu immediately.  So instead the code keeps serviceBodies updated imperatively.
@@ -61,14 +71,12 @@
             rootServersError = `Got ${response.status} status from ${url}.`
             return;
         }
-
         const _rootServers = [];
         for (let rawRootServer of await response.json()) {
             const rootServer = new RootServer(rawRootServer);
             _rootServers.push(rootServer);
         }
-
-        rootServers = _rootServers;
+        rootServers = _rootServers.sort( (a,b) => a.name.localeCompare(b.name) );
     }
 
     async function fetchSnapshots() {
@@ -139,7 +147,7 @@
                 _allServiceBodies.push(serviceBody);
             }
             allServiceBodies = _allServiceBodies;
-            serviceBodies = filterServiceBodies(allServiceBodies);
+            serviceBodies = sortAndFilterServiceBodies(allServiceBodies);
         } else {
             // server or snapshot is null -- so no service bodies yet
             serviceBodies = [];
@@ -175,50 +183,13 @@
         return result;
     }
 
-    // helper function to sort service bodies by type, and then by name
-    function compareServiceBodies (a, b) {
-        if (a.type == b.type) {
-            if (a.name < b.name) {
-                return -1;
-            } else if (a.name > b.name) {
-                return 1
-            } else {
-                return 0;
-            }
-        }
-        if (a.type == 'ZF') {
-            return -1;
-        }
-        if (b.type == 'ZF') {
-            return 1;
-        }
-        if (a.type == 'RS') {
-            return -1;
-        }
-        if (b.type == 'RS') {
-            return 1;
-        }
-        if (a.type == 'AS') {
-            return -1;
-        }
-        if (b.type == 'AS') {
-            return 1;
-        }
-        // a and b have different types, but neither is a zone, region, or area.    At this point who cares -- just alphabetize by type
-        if (a.type < b.type) {
-            return -1;
-        } else {
-            return 1
-        }
-    }
-
     // perhaps only include zones and regions in the service body selection menu
-    function filterServiceBodies(allServiceBodies) {
+    function sortAndFilterServiceBodies(allServiceBodies) {
         let sbs = allServiceBodies;
         if (selectFromOnlyZonesAndRegions) {
             sbs = allServiceBodies.filter(s => s.type=='ZF' || s.type=='RS');
         }
-        return sbs.sort(compareServiceBodies);
+        return sbs.sort( (a,b) => a.name.localeCompare(b.name) );
     }
 
     async function generateSpreadsheet() {
@@ -396,84 +367,159 @@
 </section>
 
 <section>
-    <h2>Server:</h2>
-    {#if rootServers}
-        <form>
-            <select bind:value={selectedRootServer} on:change="{serverSelectionChanged}">
-                <option disabled selected value> -- select a server -- </option>
-                {#each rootServers as server }
-                    <option value={server}>
-                        {server.name}
-                    </option>
-                {/each}
-            </select>
-        </form>
-    {:else if rootServersError}
-        <p style="color: red">{rootServersError.message}</p>
-    {:else}
-        <p>...retrieving servers</p>
-    {/if}
-</section>
-
-<section>
-    <h2>Start and End Dates:</h2>
-    {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
-        Start: <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
-            min={firstSnapshot.date} max={lastSnapshot.date} bind:value={startDate} />
-        <p></p>
-        End: <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
-            min={firstSnapshot.date} max={lastSnapshot.date} bind:value={endDate} />
-    {:else}
-    [first pick a server - that determines which snapshot dates are available]
-    {/if}
-</section>
-
-<section>
-    <h2>Service Body:</h2>
-    {#if rootServers && allServiceBodies}
-        <form>
-            <select bind:value={selectedServiceBody}>
-                <option disabled selected value> -- select a service body -- </option>
-                {#each serviceBodies as serviceBody }
-                    <option value={serviceBody}>
-                        {serviceBody.name}
-                    </option>
-                {/each}
-            </select>
-        </form>
-        <label>
-            <input type=checkbox
-                bind:checked={selectFromOnlyZonesAndRegions}
-                on:change="{() => serviceBodies = filterServiceBodies(allServiceBodies)}">
-            Only show zones and regions
-        </label>
-    {:else if serviceBodiesError}
-        <p style="color: red">{serviceBodiesError.message}</p>
-    {:else}
-        <p>[first pick a server and end date - available service bodies are as of the snapshot for the end date]</p>
-    {/if}
+    <table>
+        <tr>
+            <td class="selectionLabel">Server:</td>
+            <td>
+                {#if rootServers}
+                    <form>
+                        <select class="selectionMenu" bind:value={selectedRootServer} on:change="{serverSelectionChanged}">
+                            <option disabled selected value> -- select a server -- </option>
+                            {#each rootServers as server }
+                                <option value={server}>
+                                    {server.name}
+                                </option>
+                            {/each}
+                        </select>
+                    </form>
+                {:else if rootServersError}
+                    <p style="color: red">{rootServersError.message}</p>
+                {:else}
+                    <p>...retrieving servers</p>
+                {/if}
+            </td>
+        </tr>
+        <tr>
+            <td class="selectionLabel">Start Date:</td>
+            <td>
+                {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
+                    <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
+                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawStartDate} />
+                {:else}
+                    [select a server for available snapshot dates]
+                {/if}
+            </td>
+        </tr>
+        <tr>
+            <td class="selectionLabel">End Date:</td>
+            <td>
+                {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
+                    <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
+                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawEndDate} />
+                {/if}
+            </td>
+        </tr>
+        <tr>
+            <td class="selectionLabel">Service Body:</td>
+            <td>
+                {#if rootServers && allServiceBodies}
+                    <form>
+                        <select class="selectionMenu" bind:value={selectedServiceBody}>
+                            {#each serviceBodies as serviceBody }
+                                <option value={serviceBody}>
+                                    {serviceBody.name}
+                                </option>
+                            {/each}
+                        </select>
+                    </form>
+                {:else if serviceBodiesError}
+                    <p style="color: red">{serviceBodiesError.message}</p>
+                {:else}
+                    [select a server and end date for available service bodies]
+                {/if}
+            </td>
+        </tr>
+        <tr>
+            <td></td>
+            <td>
+                <label>
+                    <input disabled={!rootServers || !allServiceBodies || serviceBodiesError} type=checkbox
+                        bind:checked={selectFromOnlyZonesAndRegions}
+                        on:change="{() => serviceBodies = sortAndFilterServiceBodies(allServiceBodies)}">
+                    Only show zones and regions
+                </label>
+            </td>
+        </tr>
+    </table>
 </section>
 
 <section>
     <h2>Information for Current Selections</h2>
-    Selected server: {selectedRootServer?.name ?? 'none'}<br/>
-    Number of snapshots: {snapshots?.length ?? 'none'}<br/>
-    First snapshot date: {firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
-    Last snapshot date: {lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
-    Number of service bodies as of end date: {allServiceBodies?.length ?? 'none'}<br/>
-    Selected service body: {selectedServiceBody?.name ?? 'none'}<br/>
-    Closest snapshot to start date: {startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
-    Closest snapshot to end date: {endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : 'none'}<br/>
+    <table>
+        <tr>
+            <td>Selected server:</td>
+            <td class="informationItem">{selectedRootServer?.name ?? 'none'}</td>
+        </tr>
+        <tr>
+            <td>Number of snapshots:</td>
+            <td class="informationItem">{snapshots?.length ?? 'none'}</td>
+        </tr>
+        <tr>
+            <td>Date of first snapshot:</td>
+            <td class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+        </tr>
+        <tr>
+            <td>Date of most recent snapshot:</td>
+            <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+        </tr>
+        <tr>
+            <td>Closest snapshot for selected start date:</td>
+            <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+        </tr>
+        <tr>
+            <td>Closest snapshot for selected end date:</td>
+            <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+        </tr>
+        <tr>
+            <td> Number of service bodies as of end date:</td>
+            <td class="informationItem">{allServiceBodies?.length ?? 'none'}</td>
+        </tr>
+        <tr>
+            <td>Selected service body:</td>
+            <td class="informationItem">{selectedServiceBody?.name ?? 'none'}</td>
+        </tr>
+    </table>
+</section>
+
+<section>
+    <h2>Errors and Warnings</h2>
+    <table>
+        {#if !dateSelectionError && !missingStartSnapshotWarning && !missingEndSnapshotWarning}
+            <tr>
+                <td>- none -</td>
+            </tr>
+        {/if}
+        {#if dateSelectionError}
+            <tr class="error_text">
+                <td>Error: start snapshot must be before end snapshot</td>
+            </tr>
+        {/if}
+        {#if missingStartSnapshotWarning}
+            <tr class="warn_text">
+                <td>Warning: couldn't find a snapshot on the exact start date -- using one from {format(startSnapshot.date, 'yyyy-MM-dd')} instead</td>
+            </tr>
+        {/if}
+        {#if missingEndSnapshotWarning}
+            <tr class="warn_text">
+                <td>Warning: couldn't find a snapshot on the exact end date -- using one from {format(endSnapshot.date, 'yyyy-MM-dd')} instead</td>
+            </tr>
+        {/if}
+    </table>
 </section>
 
 <section>
     <p></p>
-    <button disabled={ !selectedRootServer || !startSnapshot || !endSnapshot || !selectedServiceBody } on:click={ generateSpreadsheet }>
+    <button disabled={ !selectedRootServer || !startSnapshot || !endSnapshot || !selectedServiceBody || dateSelectionError }
+            on:click={ generateSpreadsheet }>
         Generate spreadsheet
     </button>
 </section>
 
 <style>
+    :global(body) {
+        --date-input-width: 28em;
+    }
+
     section {
         display: flex;
         flex-direction: column;
@@ -487,7 +533,38 @@
                 display: block;
                 margin-left: auto;
                 margin-right: auto;
-               width: 10%;
+                width: 10%;
     }
 
-</style>
+    .selectionMenu {
+        min-width: 28em;
+    }
+
+    .selectionLabel {
+        text-align: left;
+        font-weight: bold;
+    }
+
+    .informationItem {
+        text-align: left;
+        min-width: 28em;
+    }
+
+    .error_text {
+        font-size: 18px;
+        text-align: left;
+        background-color: #E00000;
+        color: white;
+        border-radius: 3px;
+    }
+
+    .warn_text {
+        font-size: 18px;
+        text-align: left;
+        border: 1px solid black;
+        background-color: yellow;
+        color: black;
+        border-radius: 3px;
+    }
+
+    </style>

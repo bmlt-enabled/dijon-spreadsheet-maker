@@ -1,8 +1,8 @@
-import { makeDate } from '$lib/makeDate';
+import { stringToDate } from '$lib/DateUitls';
 
 export class Snapshot {
     constructor(rootServerId, rawDate) {
         this.rootServerId = rootServerId;
-        this.date = makeDate(rawDate);
+        this.date = stringToDate(rawDate);
     }
 }
