@@ -18,10 +18,8 @@
     const dijonBaseUrl = 'https://dijon.jrb.lol';
     const rootServersUrl = new URL('rootservers', dijonBaseUrl);
     let rootServers;
-    let rootServersError;
     let selectedRootServer;
     let snapshots;         // all snapshots for the selected server
-    let snapshotsError;
     let firstSnapshot;     // first snapshot for the selected server
     let lastSnapshot;      // last snapshot for the selected server
     let rawStartDate;      // start date as selected from the calendar
@@ -33,12 +31,20 @@
     let allServiceBodies;  // service bodies for the root server as of last snapshot date
     let serviceBodies;
     let selectedServiceBody;
-    let serviceBodiesError;
     let selectFromOnlyZonesAndRegions = true;
-    let changesError;
-    let dateSelectionError;           // true if the start snapshot date isn't before the end snapshot date
-    let missingStartSnapshotWarning;  // true if there isn't a snapshot exactly on the startDate
-    let missingEndSnapshotWarning;  // true if there isn't a snapshot exactly on the endDate
+
+    // errors -- these will be either null if no error, or a descriptive string
+    let rootServersError = null;            // error retrieving the list of root servers
+    let snapshotsError = null;              // error retrieving the snapshots from the selected root server
+    let serviceBodiesError = null;          // error retrieving the service bodies from the selected snapshot
+    let dateSelectionError = null;          // error if the start snapshot date isn't before the end snapshot date
+    let changesError = null;                // error retrieving the set of changed meetings
+    // warnings
+    let missingStartSnapshotWarning = null; // warning if there isn't a snapshot exactly on the startDate
+    let missingEndSnapshotWarning = null;   // warning if there isn't a snapshot exactly on the endDate
+    // arrays of all non-null errors and warnings;
+    let errors = [];
+    let warnings = [];
 
     // styles for export spreadsheet
     const headerStyle = {font: {bold: true}};
@@ -57,20 +63,30 @@
     $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
     $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
     $: selectedRootServer && endSnapshot && fetchServiceBodies(selectedRootServer, endSnapshot);
-    $: selectedRootServer && startSnapshot && endSnapshot && (dateSelectionError = !isBefore(startSnapshot.date, endSnapshot.date));
-    $: selectedRootServer && startDate && startSnapshot && (missingStartSnapshotWarning = !isEqual(startSnapshot.date,startDate));
-    $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = !isEqual(endSnapshot.date, endDate));
+    $: selectedRootServer && startSnapshot && endSnapshot && (dateSelectionError = isBefore(startSnapshot.date, endSnapshot.date) ? null :
+        'Error: start snapshot must be before end snapshot');
+    $: selectedRootServer && startDate && startSnapshot && (missingStartSnapshotWarning = isEqual(startSnapshot.date,startDate) ? null :
+        `Warning: couldn't find a snapshot on the exact start date -- using one from ${format(startSnapshot.date, 'yyyy-MM-dd')} instead`);
+    $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = isEqual(endSnapshot.date,endDate) ? null :
+        `Warning: couldn't find a snapshot on the exact end date -- using one from ${format(endSnapshot.date, 'yyyy-MM-dd')} instead`);
+    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError);
+    $: warnings = concatErrorsOrWarnings(missingStartSnapshotWarning, missingEndSnapshotWarning);
 
     // This ought to work to keep serviceBodies up-to-date, but changing the selectFromOnlyZonesAndRegions checkbox doesn't
     // change the menu immediately.  So instead the code keeps serviceBodies updated imperatively.
     // $: allServiceBodies && (serviceBodies = filterServiceBodies(allServiceBodies));
 
+    function concatErrorsOrWarnings(...strs) {
+        return strs.filter(s => s!==null);
+    }
+
     async function fetchRootServers() {
         const response = await fetch(rootServersUrl);
         if (!response.ok) {
-            rootServersError = `Got ${response.status} status from ${url}.`
+            rootServersError = `Error fetching root servers - got ${response.status} status from ${rootServersUrl}`
             return;
         }
+        rootServersError =  null;
         const _rootServers = [];
         for (let rawRootServer of await response.json()) {
             const rootServer = new RootServer(rawRootServer);
@@ -81,22 +97,21 @@
 
     async function fetchSnapshots() {
         if ( !selectedRootServer) {
-            snapshotsError = 'no root server selected';
+            snapshotsError = 'No root server selected - unable to get snapshots';
             return;
         }
         const snapshotsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots`, dijonBaseUrl);
         const response = await fetch(snapshotsUrl);
         if (!response.ok) {
-            snapshotsError = `Got ${response.status} status from ${url}.`
+            snapshotsError = `Error fetching snapshots - got ${response.status} status from ${snapshotsUrl}`
             return;
         }
-
+        snapshotsError = null;
         const _snapshots = [];
         for (let rawSnapshot of await response.json()) {
             const snapshot = new Snapshot(rawSnapshot.root_server_id, rawSnapshot.date);
             _snapshots.push(snapshot);
         }
-
         snapshots = _snapshots;
     }
 
@@ -138,9 +153,10 @@
             const serviceBodiesUrl = new URL(`rootservers/${server.id}/snapshots/${format(snapshot.date, 'yyyy-MM-dd')}/servicebodies`, dijonBaseUrl);
             const response = await fetch(serviceBodiesUrl);
             if (!response.ok) {
-                serviceBodiesError = `Got ${response.status} status from ${serviceBodiesUrl}.`
+                serviceBodiesError = `Error fetching service bodies - got ${response.status} status from ${serviceBodiesUrl}`
                 return;
             }
+            serviceBodiesError = null;
             const _allServiceBodies = [];
             for (let rawServiceBody of await response.json()) {
                 const serviceBody = new ServiceBody(rawServiceBody);
@@ -152,6 +168,7 @@
             // server or snapshot is null -- so no service bodies yet
             serviceBodies = [];
         }
+        selectedServiceBody = null;
     }
 
 
@@ -204,9 +221,10 @@
         changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
         const response = await fetch(changesUrl);
         if (!response.ok) {
-            changesError = `Got ${response.status} status from ${changesUrl}.`
+            changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}.`
             return;
         }
+        changesError = null;
         const rawChanges = await response.json();
         let lastRow = 0;
         for (let rawChange of rawChanges.events) {
@@ -240,7 +258,6 @@
         const fileName = `BMLT_${selectedServiceBody.world_id}_changes_from_${startSnapshotDateStr}_to_${endSnapshotDateStr}.xlsx`;
         // use writeFile since writeFileXLSX isn't available in the xlsx-js-style fork
         XLSX.writeFile(workbook, fileName);
-        alert('generated a spreadsheet!')
     }
 
     function addMeetingData(ws, row, rowIndex) {
@@ -383,7 +400,7 @@
                         </select>
                     </form>
                 {:else if rootServersError}
-                    <p style="color: red">{rootServersError.message}</p>
+                    <p style="color: red">Error trying to fetch root servers</p>
                 {:else}
                     <p>...retrieving servers</p>
                 {/if}
@@ -423,7 +440,7 @@
                         </select>
                     </form>
                 {:else if serviceBodiesError}
-                    <p style="color: red">{serviceBodiesError.message}</p>
+                    <p style="color: red">Error trying to fetch service bodies</p>
                 {:else}
                     [select a server and end date for available service bodies]
                 {/if}
@@ -484,26 +501,21 @@
 <section>
     <h2>Errors and Warnings</h2>
     <table>
-        {#if !dateSelectionError && !missingStartSnapshotWarning && !missingEndSnapshotWarning}
+        {#if errors.length==0 && warnings.length==0}
             <tr>
                 <td>- none -</td>
             </tr>
         {/if}
-        {#if dateSelectionError}
+        {#each errors as e}
             <tr class="error_text">
-                <td>Error: start snapshot must be before end snapshot</td>
+                <td>{e}</td>
             </tr>
-        {/if}
-        {#if missingStartSnapshotWarning}
+        {/each}
+        {#each warnings as w}
             <tr class="warn_text">
-                <td>Warning: couldn't find a snapshot on the exact start date -- using one from {format(startSnapshot.date, 'yyyy-MM-dd')} instead</td>
+                <td>{w}</td>
             </tr>
-        {/if}
-        {#if missingEndSnapshotWarning}
-            <tr class="warn_text">
-                <td>Warning: couldn't find a snapshot on the exact end date -- using one from {format(endSnapshot.date, 'yyyy-MM-dd')} instead</td>
-            </tr>
-        {/if}
+        {/each}
     </table>
 </section>
 
