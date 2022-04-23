@@ -1,24 +1,12 @@
-# create-svelte
+# Dijon Spreadsheet Maker
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/master/packages/create-svelte).
+Dijon is a system to help synchronize BMLT meeting data with the meeting database maintained by NAWS.  There is a server that periodically grabs a snapshot from each participating BMLT root server and that provides an API for accessing snapshots and changes between snapshots.  The goal is to grab one snapshot per day -- there might be missing days if something is down, but there should never be more than one snapshot per BMLT server per day.
 
-## Creating a project
+The spreadsheet maker is a UI for the server.  It provides a web-based query builder for producing spreadsheets showing the meeting changes between selected dates for a given service body.  The user selects the server, the desired start and end dates, and the service body.  At that point the “generate spreadsheet” button will become active and can be pressed to generate and download a spreadsheet.  The available start and end dates are bounded by the dates of the first and last snapshots for the selected BMLT server.  The available service bodies for the changes spreadsheet are those that are stored for the end snapshot.  Finally, if a snapshot isn't available for the desired start or end date, the closest earlier one will be used, and a warning displayed.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Development Mode
 
-```bash
-# create a new project in the current directory
-npm init svelte@next
-
-# create a new project in my-app
-npm init svelte@next my-app
-```
-
-> Note: the `@next` is temporary
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+The spreadsheet maker is written using [SvelteKit](https://kit.svelte.dev/docs/introduction).  Clone this repo, connect to the project directory, and install dependencies with `npm install`.  Then this command will start a server on http://localhost:3000:
 
 ```bash
 npm run dev
@@ -37,12 +25,12 @@ npm run build
 
 You can preview the production build with `npm run preview`.
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
 
 ## Publishing (GitHub)
 
-deploys to gh-pages branch
+To deploy to gh-pages branch:
 
 ```bash
 npm run deploy
 ```
+Access the deployed server at https://dijon.bmlt.dev/
