@@ -32,6 +32,7 @@
     let serviceBodies;
     let selectedServiceBody;
     let selectFromOnlyZonesAndRegions = true;
+    let includeExtraMeetings = true;
 
     // errors -- these will be either null if no error, or a descriptive string
     let rootServersError = null;            // error retrieving the list of root servers
@@ -39,6 +40,7 @@
     let serviceBodiesError = null;          // error retrieving the service bodies from the selected snapshot
     let dateSelectionError = null;          // error if the start snapshot date isn't before the end snapshot date
     let changesError = null;                // error retrieving the set of changed meetings
+    let meetingsError = null;               // error retrieving all the meetings (used if includeExtraMeetings is true)
     // warnings
     let missingStartSnapshotWarning = null; // warning if there isn't a snapshot exactly on the startDate
     let missingEndSnapshotWarning = null;   // warning if there isn't a snapshot exactly on the endDate
@@ -69,7 +71,7 @@
         `Warning: couldn't find a snapshot on the exact start date -- using one from ${format(startSnapshot.date, 'yyyy-MM-dd')} instead`);
     $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = isEqual(endSnapshot.date,endDate) ? null :
         `Warning: couldn't find a snapshot on the exact end date -- using one from ${format(endSnapshot.date, 'yyyy-MM-dd')} instead`);
-    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError);
+    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError, meetingsError);
     $: warnings = concatErrorsOrWarnings(missingStartSnapshotWarning, missingEndSnapshotWarning);
 
     // This ought to work to keep serviceBodies up-to-date, but changing the selectFromOnlyZonesAndRegions checkbox doesn't
@@ -221,11 +223,15 @@
         changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
         const response = await fetch(changesUrl);
         if (!response.ok) {
-            changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}.`
+            changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}`;
             return;
         }
         changesError = null;
         const rawChanges = await response.json();
+        // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
+        // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
+        const worldIdsWithChanges = {};
+        const bmltIdsWithChanges = {};
         let lastRow = 0;
         for (let rawChange of rawChanges.events) {
             lastRow++;
@@ -237,20 +243,49 @@
                     newRow = getRowForMeeting(change.new_meeting);
                     addMeetingData(ws, newRow, lastRow);
                     styleEntireRow(ws, lastRow, newMeetingStyle);
+                    worldIdsWithChanges[change.new_meeting.world_id] = true;
+                    bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
                     break;
                 case 'MeetingDeleted':
                     oldRow = getRowForMeeting(change.old_meeting);
                     addMeetingData(ws, oldRow, lastRow);
                     styleEntireRow(ws, lastRow, deletedMeetingStyle);
+                    worldIdsWithChanges[change.old_meeting.world_id] = true;
+                    // the old_meeting won't be in the current meetings
                     break;
                 case 'MeetingUpdated':
                     oldRow = getRowForMeeting(change.old_meeting);
                     newRow = getRowForMeeting(change.new_meeting);
                     addMeetingData(ws, newRow, lastRow);
                     styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
+                    // these will probably be the same for the old and new meetings, but add them both anyway to be safe
+                    worldIdsWithChanges[change.old_meeting.world_id] = true;
+                    worldIdsWithChanges[change.new_meeting.world_id] = true;
+                    bmltIdsWithChanges[change.old_meeting.bmlt_id] = true;
+                    bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
                     break;
                 default:
                     console.log(`unknown event type: ${change.event_type}`);    // sometime: better error handling
+            }
+        }
+        // If includeExtraMeetings is true, add other meetings to the spreadsheet with the same world_id as a changed meeting.
+        if (includeExtraMeetings) {
+            const meetingsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots/${endSnapshotDateStr}/meetings`, dijonBaseUrl);
+            meetingsUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
+            const response2 = await fetch(meetingsUrl);
+            if (!response2.ok) {
+                meetingsError = `Error fetching extra meetings - got ${response2.status} status from ${meetingsUrl}`;
+                return;
+            }
+            meetingsError = null;
+            const rawMeetings = await response2.json();
+            for (let rawMeeting of rawMeetings) {
+                const meeting = new Meeting(rawMeeting);
+                if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
+                    lastRow++;
+                    const row = getRowForMeeting(meeting);
+                    addMeetingData(ws, row, lastRow);
+                }
             }
         }
         const workbook = XLSX.utils.book_new();
@@ -457,6 +492,15 @@
                 </label>
             </td>
         </tr>
+        <tr>
+            <td class="selectionLabel">Extra Meetings:</td>
+            <td>
+                <label>
+                    <input type=checkbox bind:checked={includeExtraMeetings}>
+                    Include all meetings with the same world_id as one with changes
+                </label>
+            </td>
+        </tr>
     </table>
 </section>
 
@@ -469,31 +513,35 @@
         </tr>
         <tr>
             <td>Number of snapshots:</td>
-            <td class="informationItem">{snapshots?.length ?? 'none'}</td>
+            <td class="informationItem">{snapshots?.length ?? '?'}</td>
         </tr>
         <tr>
             <td>Date of first snapshot:</td>
-            <td class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+            <td class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
             <td>Date of most recent snapshot:</td>
-            <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+            <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
             <td>Closest snapshot for selected start date:</td>
-            <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+            <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
             <td>Closest snapshot for selected end date:</td>
-            <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : 'none'}</td>
+            <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
             <td> Number of service bodies as of end date:</td>
-            <td class="informationItem">{allServiceBodies?.length ?? 'none'}</td>
+            <td class="informationItem">{allServiceBodies?.length ?? '?'}</td>
         </tr>
         <tr>
             <td>Selected service body:</td>
             <td class="informationItem">{selectedServiceBody?.name ?? 'none'}</td>
+        </tr>
+        <tr>
+            <td>Include extra meetings:</td>
+            <td class="informationItem">{includeExtraMeetings}</td>
         </tr>
     </table>
 </section>
