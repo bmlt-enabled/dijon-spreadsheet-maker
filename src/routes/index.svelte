@@ -142,9 +142,11 @@
     function serverSelectionChanged() {
         fetchSnapshots();
         fetchServiceBodies(selectedRootServer, endSnapshot);
-        // there may be a more graceful way to do this - anyway, the issue is that the first and last possible dates may have changed
+        // There may be a more graceful way to do this - anyway, the issue is that the first and last possible dates may have changed
         // when the server selection is changed, and so the startDate or endDate might be invalid.  Better would be to find out if
-        // that date still works
+        // that date still works.
+        rawStartDate = null;
+        rawEndDate = null;
         startDate = null;
         endDate = null;
         selectedServiceBody = null;
@@ -524,11 +526,19 @@
             <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
-            <td>Closest snapshot for selected start date:</td>
+            <td>Start date:</td>
+            <td class="informationItem">{startDate ? format(startDate, 'yyyy-MM-dd') : '?'}</td>
+        </tr>
+        <tr>
+            <td>End date:</td>
+            <td class="informationItem">{endDate ? format(endDate, 'yyyy-MM-dd') : '?'}</td>
+        </tr>
+        <tr>
+            <td>Closest snapshot for start date:</td>
             <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
-            <td>Closest snapshot for selected end date:</td>
+            <td>Closest snapshot for end date:</td>
             <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
         </tr>
         <tr>
@@ -627,4 +637,4 @@
         border-radius: 3px;
     }
 
-    </style>
+</style>
