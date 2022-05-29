@@ -9,7 +9,8 @@ export function stringToDate (s) {
     }
 }
 
-// take a date with some random time and return a new date with just the year, month, and day set
+// Take a date with some random time and return a new date with just the year, month, and day set explicitly.
+// The time will default to midnight in the current time zone.
 export function makePureDate (d) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }

@@ -23,15 +23,15 @@
     let firstSnapshot;     // first snapshot for the selected server
     let lastSnapshot;      // last snapshot for the selected server
     let rawStartDate;      // start date as selected from the calendar
-    let startDate;         // start date with time removed
+    let startDate;         // start date with time set to the default (midnight in current time zone)
     let rawEndDate;        // end date as selected from the calendar
-    let endDate;           // end date awith time removed
+    let endDate;           // end date with time set to the default (midnight in current time zone)
     let startSnapshot;     // closest available snapshot on or before startDate
     let endSnapshot;       // closest available snapshot on or before endDate
     let allServiceBodies;  // service bodies for the root server as of last snapshot date
-    let serviceBodies;
-    let selectedServiceBody;
     let selectFromOnlyZonesAndRegions = true;
+    let serviceBodies;     // service bodies to show in menu
+    let selectedServiceBody;
     let includeExtraMeetings = true;
 
     // errors -- these will be either null if no error, or a descriptive string
@@ -60,8 +60,6 @@
 
     $: rawStartDate && (startDate = makePureDate(rawStartDate));
     $: rawEndDate && (endDate = makePureDate(rawEndDate));
-    $: selectedRootServer && snapshots && (firstSnapshot = findFirstSnapshot());
-    $: selectedRootServer && snapshots && (lastSnapshot = findLastSnapshot());
     $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
     $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
     $: selectedRootServer && endSnapshot && fetchServiceBodies(selectedRootServer, endSnapshot);
@@ -115,26 +113,36 @@
             _snapshots.push(snapshot);
         }
         snapshots = _snapshots;
-    }
-
-    function findFirstSnapshot() {
-        let s = null;
-        for ( let i = 0; i < snapshots.length; i++ ) {
-            if ( !s || snapshots[i].date < s.date ) {
-                s = snapshots[i];
+        // find the first and last snapshot
+        firstSnapshot = lastSnapshot = snapshots[0];
+        for ( let i = 1; i < snapshots.length; i++ ) {
+            if (snapshots[i].date < firstSnapshot.date) {
+                firstSnapshot = snapshots[i];
+            }
+            if (snapshots[i].date > lastSnapshot.date) {
+                lastSnapshot = snapshots[i];
             }
         }
-        return s;
-    }
-
-    function findLastSnapshot() {
-        let s = null;
-        for ( let i = 0; i < snapshots.length; i++ ) {
-            if ( !s || snapshots[i].date > s.date ) {
-                s = snapshots[i];
+        // If there is already a start or end date selected, check if it is still valid for the snapshots.  (This arises if the user has already
+        // selected a server and dates, and then selects a different server.)  If the selected start or end date is no longer valid, set it to null
+        // so that there is no longer a selected date.  If it is still valid, find the new start and end snaphots.  This avoids erasing the dates if
+        // it's not necessary.
+        if (startDate) {
+            if (startDate < firstSnapshot.date || startDate > lastSnapshot.date) {
+                rawStartDate = null;
+                startDate = null;
+            } else {
+                startSnapshot = findSnapshot(startDate);
             }
         }
-        return s;
+        if (endDate) {
+            if (endDate < firstSnapshot.date || endDate > lastSnapshot.date) {
+                rawEndDate = null;
+                endDate = null;
+            } else {
+                endSnapshot = findSnapshot(endDate);
+            }
+        }
     }
 
     // bit of a hack -- function to call when the server selection changes (the reactive declarations ought to take care of this,
@@ -142,14 +150,6 @@
     function serverSelectionChanged() {
         fetchSnapshots();
         fetchServiceBodies(selectedRootServer, endSnapshot);
-        // There may be a more graceful way to do this - anyway, the issue is that the first and last possible dates may have changed
-        // when the server selection is changed, and so the startDate or endDate might be invalid.  Better would be to find out if
-        // that date still works.
-        rawStartDate = null;
-        rawEndDate = null;
-        startDate = null;
-        endDate = null;
-        selectedServiceBody = null;
     }
 
     async function fetchServiceBodies(server, snapshot) {
