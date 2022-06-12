@@ -1,5 +1,6 @@
 <svelte:head>
     <title>Dijon Spreadsheet Query Builder</title>
+    <link rel='stylesheet' href='css/vendor.css'>
 </svelte:head>
 
 <script>
@@ -407,174 +408,158 @@
     }
 
 </script>
-
+<header>
+    <h1 class="site-title">BMLT - DSQB</h1>
+</header>
+<div class="wrapper" style="background-image: url(' ');">
+        <div class="inner">
 <section>
-    <h1>
-        <div class="mustard">
-            <picture>
-                <img src="mustard-jar.jpg" alt="Photo of a jar of Dijon mustard" />
-            </picture>
-        </div>
-    </h1>
-
-    <h1> Dijon Spreadsheet Query Builder</h1>
+    <h2> Dijon Spreadsheet Query Builder</h2>
 </section>
 
 <section>
-    <table>
-        <tr>
-            <td class="selectionLabel">Server:</td>
-            <td>
-                {#if rootServers}
-                    <form>
-                        <select class="selectionMenu" bind:value={selectedRootServer} on:change="{serverSelectionChanged}">
-                            <option disabled selected value> -- select a server -- </option>
-                            {#each rootServers as server }
-                                <option value={server}>
-                                    {server.name}
-                                </option>
-                            {/each}
-                        </select>
-                    </form>
-                {:else if rootServersError}
-                    <p style="color: red">Error trying to fetch root servers</p>
-                {:else}
-                    <p>...retrieving servers</p>
-                {/if}
-            </td>
-        </tr>
-        <tr>
-            <td class="selectionLabel">Start Date:</td>
-            <td>
-                {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
-                    <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
-                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawStartDate} />
-                {:else}
-                    [select a server for available snapshot dates]
-                {/if}
-            </td>
-        </tr>
-        <tr>
-            <td class="selectionLabel">End Date:</td>
-            <td>
-                {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
-                    <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
-                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawEndDate} />
-                {/if}
-            </td>
-        </tr>
-        <tr>
-            <td class="selectionLabel">Service Body:</td>
-            <td>
-                {#if rootServers && allServiceBodies}
-                    <form>
-                        <select class="selectionMenu" bind:value={selectedServiceBody}>
-                            {#each serviceBodies as serviceBody }
-                                <option value={serviceBody}>
-                                    {serviceBody.name}
-                                </option>
-                            {/each}
-                        </select>
-                    </form>
-                {:else if serviceBodiesError}
-                    <p style="color: red">Error trying to fetch service bodies</p>
-                {:else}
-                    [select a server and end date for available service bodies]
-                {/if}
-            </td>
-        </tr>
-        <tr>
-            <td></td>
-            <td>
-                <label>
-                    <input disabled={!rootServers || !allServiceBodies || serviceBodiesError} type=checkbox
-                        bind:checked={selectFromOnlyZonesAndRegions}
-                        on:change="{() => serviceBodies = sortAndFilterServiceBodies(allServiceBodies)}">
-                    Only show zones and regions
-                </label>
-            </td>
-        </tr>
-        <tr>
-            <td class="selectionLabel">Extra Meetings:</td>
-            <td>
-                <label>
-                    <input type=checkbox bind:checked={includeExtraMeetings}>
-                    Include all meetings with the same world_id as one with changes
-                </label>
-            </td>
-        </tr>
-    </table>
+    {#if rootServers}
+        <form>
+            <div class="form-wrapper">
+                <select class="selectionMenu" bind:value={selectedRootServer} on:change="{serverSelectionChanged}">
+                    <option disabled selected value> -- select a server -- </option>
+                    {#each rootServers as server }
+                        <option value={server}>
+                            {server.name}
+                        </option>
+                    {/each}
+                </select>
+            </div>
+        </form>
+    {:else if rootServersError}
+        <p style="color: red">Error trying to fetch root servers</p>
+    {:else}
+        <p>...retrieving servers</p>
+    {/if}
+        
+    <div class="form-group">
+        <div class="form-wrapper">
+            <label for="" class="selectionLabel">Start Date:</label>
+            {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
+                <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
+                    min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawStartDate} />
+            {:else}
+                [select a server for available snapshot dates]
+            {/if}
+        </div>
+        <div class="form-wrapper">
+            <label for="" class="selectionLabel">End Date:</label>
+            {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
+                <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
+                    min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawEndDate} />
+            {/if}
+        </div>
+    </div>
+    
+    <label for="service-body-selection-menu" class="selectionLabel">Service Body:</label>
+    {#if rootServers && allServiceBodies}
+        <form>
+            <div class="form-wrapper">
+                <select name="service-body-selection-menu" class="selectionMenu" bind:value={selectedServiceBody}>
+                    {#each serviceBodies as serviceBody }
+                        <option value={serviceBody}>
+                            {serviceBody.name}
+                        </option>
+                    {/each}
+                </select>
+            </div>
+        </form>
+    {:else if serviceBodiesError}
+        <p style="color: red">Error trying to fetch service bodies</p>
+    {:else}
+        [select a server and end date for available service bodies]
+    {/if}
+    <div class="checkbox">
+        <label for="">
+            <input disabled={!rootServers || !allServiceBodies || serviceBodiesError} type="checkbox" class="checkbox"
+                bind:checked={selectFromOnlyZonesAndRegions}
+                on:change="{() => serviceBodies = sortAndFilterServiceBodies(allServiceBodies)}">Only show zones and regions
+            <span class="checkmark"></span>
+        </label>
+    </div>
+    <div class="checkbox">
+        <label for="" class="selectionLabel">
+            <input type="checkbox" class="checkbox" bind:checked={includeExtraMeetings}><span class="bold">Extra Meetings:</span> Include all meetings with the same world_id as one with changes
+            <span class="checkmark"></span>
+        </label>
+    </div>
+    
 </section>
 
 <section>
     <h2>Information for Current Selections</h2>
-    <table>
-        <tr>
-            <td>Selected server:</td>
-            <td class="informationItem">{selectedRootServer?.name ?? 'none'}</td>
-        </tr>
-        <tr>
-            <td>Number of snapshots:</td>
-            <td class="informationItem">{snapshots?.length ?? '?'}</td>
-        </tr>
-        <tr>
-            <td>Date of first snapshot:</td>
-            <td class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td>Date of most recent snapshot:</td>
-            <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td>Start date:</td>
-            <td class="informationItem">{startDate ? format(startDate, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td>End date:</td>
-            <td class="informationItem">{endDate ? format(endDate, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td>Closest snapshot for start date:</td>
-            <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td>Closest snapshot for end date:</td>
-            <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
-        </tr>
-        <tr>
-            <td> Number of service bodies as of end date:</td>
-            <td class="informationItem">{allServiceBodies?.length ?? '?'}</td>
-        </tr>
-        <tr>
-            <td>Selected service body:</td>
-            <td class="informationItem">{selectedServiceBody?.name ?? 'none'}</td>
-        </tr>
-        <tr>
-            <td>Include extra meetings:</td>
-            <td class="informationItem">{includeExtraMeetings}</td>
-        </tr>
-    </table>
+    <div class="info-group">
+        <div class="info-wrapper">
+            <div>Selected server:</div>
+            <div class="informationItem">{selectedRootServer?.name ?? 'none'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Number of snapshots:</div>
+            <div class="informationItem">{snapshots?.length ?? '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Date of first snapshot:</div>
+            <div class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Date of most recent snapshot:</div>
+            <div class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Start date:</div>
+            <div class="informationItem">{startDate ? format(startDate, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>End date:</div>
+            <div class="informationItem">{endDate ? format(endDate, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Closest snapshot for start date:</div>
+            <div class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Closest snapshot for end date:</div>
+            <div class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div> Number of service bodies as of end date:</div>
+            <div class="informationItem">{allServiceBodies?.length ?? '?'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Selected service body:</div>
+            <div class="informationItem">{selectedServiceBody?.name ?? 'none'}</div>
+        </div>
+        <div class="info-wrapper">
+            <div>Include extra meetings:</div>
+            <div class="informationItem">{includeExtraMeetings}</div>
+        </div>
+    </div>
 </section>
 
 <section>
     <h2>Errors and Warnings</h2>
-    <table>
-        {#if errors.length==0 && warnings.length==0}
-            <tr>
-                <td>- none -</td>
-            </tr>
-        {/if}
-        {#each errors as e}
-            <tr class="error_text">
-                <td>{e}</td>
-            </tr>
-        {/each}
-        {#each warnings as w}
-            <tr class="warn_text">
-                <td>{w}</td>
-            </tr>
-        {/each}
-    </table>
+    <div class="info-group">
+        <div class="info-wrapper">
+            {#if errors.length==0 && warnings.length==0}
+                    <td>- none -</td>
+            {/if}
+            {#each errors as e}
+                <div class="error_text">
+                    {e}
+                </div>
+            {/each}
+            {#each warnings as w}
+                <div class="warn_text">
+                    {w}
+                </div>
+            {/each}
+        </div>
+    </div>
 </section>
 
 <section>
@@ -584,40 +569,46 @@
         Generate spreadsheet
     </button>
 </section>
-
+</div>
+    </div>
 <style>
     :global(body) {
-        --date-input-width: 28em;
+        --date-input-width: 20em;
+        font-size: 1.15rem;
+        margin: 0;
+    }
+
+    header {
+        background: #3809a9;
+        padding-top: 1.5rem;
+        padding-bottom: 1.5rem;
+    }
+
+    .site-title {
+        font-size: 3rem;
+        color: #fff;
+        margin-left: 7rem;
     }
 
     section {
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        flex: 1;
     }
 
 
     .mustard img {
-                display: block;
-                margin-left: auto;
-                margin-right: auto;
-                width: 10%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        width: 10%;
     }
 
     .selectionMenu {
         min-width: 28em;
     }
 
-    .selectionLabel {
-        text-align: left;
-        font-weight: bold;
-    }
-
-    .informationItem {
-        text-align: left;
-        min-width: 28em;
+    .bold {
+        font-weight: 700;
     }
 
     .error_text {
@@ -636,5 +627,252 @@
         color: black;
         border-radius: 3px;
     }
+
+    .wrapper {
+        min-height: 100vh;
+        background-size: cover;
+        background-repeat: no-repeat;
+        display: flex;
+        align-items: center; 
+    }
+
+    .inner {
+        max-width: 1050px;
+        margin: auto;
+        padding-top: 68px;
+        padding-bottom: 48px;
+        background: url(mustard-jar.jpg);
+        background-size: 25%;
+        background-repeat: no-repeat;
+        background-position: center right;
+        width: 850px;
+    }
+
+    .inner h3 {
+        text-transform: uppercase;
+        font-size: 22px;
+        font-family: "Muli-Bold";
+        text-align: center;
+        margin-bottom: 32px;
+        color: #333;
+        letter-spacing: 2px; 
+    }
+
+    form {
+        width: 50%;
+    }
+
+    .form-group {
+        display: flex; 
+    }
+
+    .form-group .form-wrapper {
+        width: 50%; 
+    }
+
+    .form-group .form-wrapper:first-child {
+        margin-right: 20px; 
+    }
+
+    .form-wrapper {
+        margin-bottom: 17px; 
+    }
+
+    .form-wrapper label {
+        margin-bottom: 9px;
+        display: block; 
+    }
+
+    .form-control {
+        border: 1px solid #ccc;
+        display: block;
+        width: 100%;
+        height: 40px;
+        padding: 0 20px;
+        border-radius: 20px;
+        font-family: "Muli-Bold";
+        background: none; 
+    }
+
+    .form-control:focus {
+        border: 1px solid #ae3c33; 
+    }
+
+    :global(.date-time-field input) {
+        height: 2rem;
+        font-size: 1rem;
+    }
+
+    select {
+        -moz-appearance: none;
+        -webkit-appearance: none;
+        cursor: pointer;
+        padding-left: 5px; 
+        height: 2rem;
+        text-transform: capitalize;
+        font-size: 1rem;
+    }
+
+    select option[value=""][disabled] {
+        display: none; 
+    }
+
+    button {
+        border: none;
+        width: 152px;
+        height: 40px;
+        margin: auto;
+        margin-top: 29px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: #3809a9;
+        font-size: 13px;
+        color: #fff;
+        text-transform: uppercase;
+        font-family: "Muli-SemiBold";
+        border-radius: 20px;
+        overflow: hidden;
+        -webkit-transform: perspective(1px) translateZ(0);
+        transform: perspective(1px) translateZ(0);
+        box-shadow: 0 0 1px rgba(0, 0, 0, 0);
+        position: relative;
+        -webkit-transition-property: color;
+        transition-property: color;
+        -webkit-transition-duration: 0.5s;
+        transition-duration: 0.5s; 
+    }
+
+    button:disabled {
+        background: gray;
+    }
+
+    button:before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgb(9 169 156 / 69%);
+        -webkit-transform: scaleX(0);
+        transform: scaleX(0);
+        -webkit-transform-origin: 0 50%;
+        transform-origin: 0 50%;
+        -webkit-transition-property: transform;
+        transition-property: transform;
+        -webkit-transition-duration: 0.5s;
+        transition-duration: 0.5s;
+        -webkit-transition-timing-function: ease-out;
+        transition-timing-function: ease-out; 
+    }
+
+    button:hover:before {
+        -webkit-transform: scaleX(1);
+        transform: scaleX(1);
+        -webkit-transition-timing-function: cubic-bezier(0.52, 1.64, 0.37, 0.66);
+        transition-timing-function: cubic-bezier(0.52, 1.64, 0.37, 0.66); 
+    }
+
+    .checkbox {
+        position: relative; 
+    }
+
+    .checkbox label {
+        padding-left: 22px;
+        cursor: pointer; 
+    }
+
+    .checkbox input {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        left: 0; 
+        z-index: 1;
+    }
+
+    .checkbox input:checked ~ .checkmark:after {
+        display: block; 
+    }
+
+    .checkmark {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        height: 12px;
+        width: 13px;
+        border-radius: 2px;
+        background-color: #3809a9;
+        border: 2px solid #3809a9;
+        /*font-family: Material-Design-Iconic-Font;*/
+        color: #000;
+        font-size: 10px;
+        font-weight: bolder; 
+    }
+
+    .checkmark:after {
+        position: absolute;
+        top: -14%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: none;
+        content: '';
+        left: 3px;
+        width: 5px;
+        height: 10px;
+        border: solid #fff;
+        border-width: 0 3px 3px 0;
+        -webkit-transform: rotate(45deg);
+        -ms-transform: rotate(45deg);
+        transform: rotate(45deg);
+    }
+
+    .checkbox:disabled ~ .checkmark {
+        background: gray;
+        border-color: gray;
+    }
+
+    .info-group {
+        display: flex;
+        flex-direction: column;
+        row-gap: 0.5rem;
+    }
+
+    .info-wrapper {
+        display: flex;
+        column-gap: 2rem;
+    }
+
+    .info-wrapper div {
+        font-size: 1.15rem;
+    }
+
+    .info-wrapper div:first-child {
+        width: 15rem;
+    }
+
+    .informationItem {
+        text-transform: capitalize;
+    }
+
+
+    @media (max-width: 991px) {
+      .inner {
+        min-width: 768px; } }
+        @media (max-width: 767px) {
+          .inner {
+            min-width: auto;
+            background: none;
+            padding-top: 0;
+            padding-bottom: 0; }
+
+            form {
+                width: 100%;
+                padding-right: 15px;
+                padding-left: 15px; } }
 
 </style>
