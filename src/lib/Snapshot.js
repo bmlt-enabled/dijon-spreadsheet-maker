@@ -1,4 +1,4 @@
-import { stringToDate } from '$lib/DateUitls';
+import { stringToDate } from '$lib/DateUtils';
 
 export class Snapshot {
     constructor(rootServerId, rawDate) {

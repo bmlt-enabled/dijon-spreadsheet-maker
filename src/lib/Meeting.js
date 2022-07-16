@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { Format } from '$lib/Format';
 import { ServiceBody } from '$lib/ServiceBody';
-import { stringToDate } from '$lib/DateUitls';
+import { stringToDate } from '$lib/DateUtils';
 
 export class Meeting {
 
