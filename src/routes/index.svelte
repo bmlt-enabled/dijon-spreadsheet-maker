@@ -15,7 +15,7 @@
     import { Snapshot } from '$lib/Snapshot';
     import { makePureDate } from '$lib/DateUitls';
 
-    const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
+    const dijonBaseUrl = 'http://localhost:8000/';
     const rootServersUrl = new URL('rootservers', dijonBaseUrl);
     let rootServers;
     let selectedRootServer;
@@ -32,6 +32,7 @@
     let selectFromOnlyZonesAndRegions = true;
     let serviceBodies;     // service bodies to show in menu
     let selectedServiceBody;
+    let showOriginalNawsCodes = false;
     let includeExtraMeetings = true;
 
     // errors -- these will be either null if no error, or a descriptive string
@@ -40,6 +41,7 @@
     let serviceBodiesError = null;          // error retrieving the service bodies from the selected snapshot
     let dateSelectionError = null;          // error if the start snapshot date isn't before the end snapshot date
     let changesError = null;                // error retrieving the set of changed meetings
+    let nawsCodesError = null;              // error retrieving NAWS code overrides
     let meetingsError = null;               // error retrieving all the meetings (used if includeExtraMeetings is true)
     // warnings
     let missingStartSnapshotWarning = null; // warning if there isn't a snapshot exactly on the startDate
@@ -69,7 +71,7 @@
         `Warning: couldn't find a snapshot on the exact start date -- using one from ${format(startSnapshot.date, 'yyyy-MM-dd')} instead`);
     $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = isEqual(endSnapshot.date,endDate) ? null :
         `Warning: couldn't find a snapshot on the exact end date -- using one from ${format(endSnapshot.date, 'yyyy-MM-dd')} instead`);
-    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError, meetingsError);
+    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError, nawsCodesError, meetingsError);
     $: warnings = concatErrorsOrWarnings(missingStartSnapshotWarning, missingEndSnapshotWarning);
 
     // This ought to work to keep serviceBodies up-to-date, but changing the selectFromOnlyZonesAndRegions checkbox doesn't
@@ -214,22 +216,34 @@
     }
 
     async function generateSpreadsheet() {
-        let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders]);
+        let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders()]);
         styleEntireRow(ws, 0, headerStyle);
         // for the changesUrl,    need to wait until root server, service body, and dates are known
         const changesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/changes`, dijonBaseUrl);
+        const nawsCodesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/nawscodes`, dijonBaseUrl);
         const startSnapshotDateStr = format(startSnapshot.date, 'yyyy-MM-dd');
         const endSnapshotDateStr = format(endSnapshot.date, 'yyyy-MM-dd');
         changesUrl.searchParams.append("start_date", startSnapshotDateStr);
         changesUrl.searchParams.append("end_date", endSnapshotDateStr);
         changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-        const response = await fetch(changesUrl);
-        if (!response.ok) {
-            changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}`;
+        const changesResponse = await fetch(changesUrl);
+        if (!changesResponse.ok) {
+            changesError = `Error fetching changes - got ${changesResponse.status} status from ${changesUrl}`;
             return;
         }
         changesError = null;
-        const rawChanges = await response.json();
+        const rawChanges = await changesResponse.json();
+        const nawsCodesResponse = await fetch(nawsCodesUrl);
+        if (!nawsCodesResponse.ok) {
+            nawsCodesError = `Error fetching NAWS codes - got ${nawsCodesResponse.status} status from ${nawsCodesUrl}`;
+            return;
+        }
+        nawsCodesError = null;
+        const rawNawsCodes = await nawsCodesResponse.json();
+        let nawsCodeDict = {};
+        for (let rawNawsCode of rawNawsCodes) {
+            nawsCodeDict[rawNawsCode.bmlt_id] = rawNawsCode.code;
+        }
         // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
         // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
         const worldIdsWithChanges = {};
@@ -242,22 +256,22 @@
             let newRow;
             switch (change.event_type) {
                 case 'MeetingCreated':
-                    newRow = getRowForMeeting(change.new_meeting);
+                    newRow = getRowForMeeting(change.new_meeting, nawsCodeDict);
                     addMeetingData(ws, newRow, lastRow);
                     styleEntireRow(ws, lastRow, newMeetingStyle);
                     worldIdsWithChanges[change.new_meeting.world_id] = true;
                     bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
                     break;
                 case 'MeetingDeleted':
-                    oldRow = getRowForMeeting(change.old_meeting);
+                    oldRow = getRowForMeeting(change.old_meeting, nawsCodeDict);
                     addMeetingData(ws, oldRow, lastRow);
                     styleEntireRow(ws, lastRow, deletedMeetingStyle);
                     worldIdsWithChanges[change.old_meeting.world_id] = true;
                     // the old_meeting won't be in the current meetings
                     break;
                 case 'MeetingUpdated':
-                    oldRow = getRowForMeeting(change.old_meeting);
-                    newRow = getRowForMeeting(change.new_meeting);
+                    oldRow = getRowForMeeting(change.old_meeting, nawsCodeDict);
+                    newRow = getRowForMeeting(change.new_meeting, nawsCodeDict);
                     addMeetingData(ws, newRow, lastRow);
                     styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
                     // these will probably be the same for the old and new meetings, but add them both anyway to be safe
@@ -274,18 +288,18 @@
         if (includeExtraMeetings) {
             const meetingsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots/${endSnapshotDateStr}/meetings`, dijonBaseUrl);
             meetingsUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-            const response2 = await fetch(meetingsUrl);
-            if (!response2.ok) {
-                meetingsError = `Error fetching extra meetings - got ${response2.status} status from ${meetingsUrl}`;
+            const meetingsResponse = await fetch(meetingsUrl);
+            if (!meetingsResponse.ok) {
+                meetingsError = `Error fetching extra meetings - got ${meetingsResponse.status} status from ${meetingsUrl}`;
                 return;
             }
             meetingsError = null;
-            const rawMeetings = await response2.json();
+            const rawMeetings = await meetingsResponse.json();
             for (let rawMeeting of rawMeetings) {
                 const meeting = new Meeting(rawMeeting);
                 if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
                     lastRow++;
-                    const row = getRowForMeeting(meeting);
+                    const row = getRowForMeeting(meeting, nawsCodeDict);
                     addMeetingData(ws, row, lastRow);
                 }
             }
@@ -303,56 +317,62 @@
         XLSX.utils.sheet_add_aoa(ws, [newRow], {origin: -1});
         // fix the format on the LastChanged column to be a date -- all others can remain general format
         // (Excel didn't like having an empty value with a date format, hence the check)
-        const lastChangedCol = exportSpreadsheetHeaders.indexOf('LastChanged');
+        const lastChangedCol = exportSpreadsheetHeaders().indexOf('LastChanged');
         if ( row[lastChangedCol] ) {
-            const cell_ref = XLSX.utils.encode_cell({c: exportSpreadsheetHeaders.indexOf('LastChanged'), r: rowIndex});
+            const cell_ref = XLSX.utils.encode_cell({c: exportSpreadsheetHeaders().indexOf('LastChanged'), r: rowIndex});
             ws[cell_ref].t = 'd';
         }
     }
 
     // if you change the headers below, make sure to also change the return value in the getRowForMeeting function
-    const exportSpreadsheetHeaders = [
-        'Committee',
-        'CommitteeName',
-        'AreaRegion',
-        'ParentName',
-        'Day',
-        'Time',
-        'Room',
-        'Closed',
-        'WheelChr',
-        'Place',
-        'Address',
-        'City',
-        'LocBorough',
-        'State',
-        'Zip',
-        'Directions',
-        'Format1',
-        'Format2',
-        'Format3',
-        'Format4',
-        'Format5',
-        'Language1',
-        'Language2',
-        'Language3',
-        'unpublished',
-        'VirtualMeetingLink',
-        'VirtualMeetingInfo',
-        'PhoneMeetingNumber',
-        'Country',
-        'LastChanged',
-        'Longitude',
-        'Latitude',
-        'TimeZone',
-        'bmlt_id',
-    ];
+    function exportSpreadsheetHeaders() {
+        const committees = showOriginalNawsCodes ? ['Committee', 'Original'] : ['Committee'];
+        return  committees.concat([
+            'CommitteeName',
+            'AreaRegion',
+            'ParentName',
+            'Day',
+            'Time',
+            'Room',
+            'Closed',
+            'WheelChr',
+            'Place',
+            'Address',
+            'City',
+            'LocBorough',
+            'State',
+            'Zip',
+            'Directions',
+            'Format1',
+            'Format2',
+            'Format3',
+            'Format4',
+            'Format5',
+            'Language1',
+            'Language2',
+            'Language3',
+            'unpublished',
+            'VirtualMeetingLink',
+            'VirtualMeetingInfo',
+            'PhoneMeetingNumber',
+            'Country',
+            'LastChanged',
+            'Longitude',
+            'Latitude',
+            'TimeZone',
+            'bmlt_id',
+        ]);
+    }
 
     // if you change the return value in the getRowForMeeting function, be sure to also change exportSpreadsheetHeaders
-    function getRowForMeeting(meeting) {
-        let formats = meeting.nawsFormats();
-        return [
-            meeting.world_id,                              // Committee
+    function getRowForMeeting(meeting, nawsCodeDict) {
+        const overridden = nawsCodeDict.hasOwnProperty(meeting.bmlt_id);
+        const worldId = overridden ? nawsCodeDict[meeting.bmlt_id] : meeting.world_id;
+        const original = overridden ? meeting.world_id : '';
+        const worldIdCols = showOriginalNawsCodes ? [worldId, original] : [worldId];
+        const formats = meeting.nawsFormats();
+        return worldIdCols.concat([
+            // first column or two are Committee and maybe Original
             meeting.name,                                  // CommitteeName
             meeting.serviceBodyWorldId(allServiceBodies),  // AreaRegion
             meeting.serviceBodyName(allServiceBodies),     // ParentName
@@ -386,12 +406,12 @@
             meeting.latitude,                              // Latitude
             meeting.time_zone,                             // TimeZone
             meeting.bmlt_id,                               // bmlt_id
-        ];
+        ]);
     }
 
     // apply a style to every cell in the given row
     function styleEntireRow(ws, row, style) {
-        for (let i = 0; i < exportSpreadsheetHeaders.length; i++) {
+        for (let i = 0; i < exportSpreadsheetHeaders().length; i++) {
             let cell_ref = XLSX.utils.encode_cell({c: i, r: row});
             ws[cell_ref].s = style;
         }
@@ -495,6 +515,15 @@
             </td>
         </tr>
         <tr>
+            <td></td>
+            <td>
+                <label>
+                    <input type=checkbox bind:checked={showOriginalNawsCodes}>
+                    Include original NAWS codes in spreadsheet as well as overrides
+                </label>
+            </td>
+        </tr>
+        <tr>
             <td class="selectionLabel">Extra Meetings:</td>
             <td>
                 <label>
@@ -548,6 +577,10 @@
         <tr>
             <td>Selected service body:</td>
             <td class="informationItem">{selectedServiceBody?.name ?? 'none'}</td>
+        </tr>
+        <tr>
+            <td>Include original NAWS codes:</td>
+            <td class="informationItem">{showOriginalNawsCodes}</td>
         </tr>
         <tr>
             <td>Include extra meetings:</td>
