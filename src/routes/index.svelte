@@ -92,7 +92,8 @@
             const rootServer = new RootServer(rawRootServer);
             _rootServers.push(rootServer);
         }
-        rootServers = _rootServers.sort( (a,b) => a.name.localeCompare(b.name) );
+        // hack - put servers whose name starts with '[do not use yet]' at the end of the list
+        rootServers = _rootServers.sort( (a,b) => a.name.replace('[do not use yet]', 'ZZZZ').localeCompare(b.name.replace('[do not use yet]', 'ZZZZ')) );
     }
 
     async function fetchSnapshots() {
