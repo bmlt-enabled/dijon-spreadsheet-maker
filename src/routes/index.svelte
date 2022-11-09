@@ -33,6 +33,7 @@
     let serviceBodies;     // service bodies to show in menu
     let selectedServiceBody;
     let includeExtraMeetings = true;
+    let excludeWorldIdUpdates = true;
 
     // errors -- these will be either null if no error, or a descriptive string
     let rootServersError = null;            // error retrieving the list of root servers
@@ -224,6 +225,7 @@
         changesUrl.searchParams.append("start_date", startSnapshotDateStr);
         changesUrl.searchParams.append("end_date", endSnapshotDateStr);
         changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
+        changesUrl.searchParams.append("exclude_world_id_updates", excludeWorldIdUpdates);
         const response = await fetch(changesUrl);
         if (!response.ok) {
             changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}`;
@@ -500,7 +502,16 @@
             <td>
                 <label>
                     <input type=checkbox bind:checked={includeExtraMeetings}>
-                    Include all meetings with the same world_id as one with changes
+                    Include all meetings with the same World ID as one with changes
+                </label>
+            </td>
+        </tr>
+        <tr>
+            <td class="selectionLabel">World ID changes:</td>
+            <td>
+                <label>
+                    <input type=checkbox bind:checked={excludeWorldIdUpdates}>
+                    Exclude meetings when the only change is to the World ID
                 </label>
             </td>
         </tr>
@@ -553,6 +564,10 @@
         <tr>
             <td>Include extra meetings:</td>
             <td class="informationItem">{includeExtraMeetings}</td>
+        </tr>
+        <tr>
+            <td>Exclude changes to just the World ID:</td>
+            <td class="informationItem">{excludeWorldIdUpdates}</td>
         </tr>
     </table>
 </section>
