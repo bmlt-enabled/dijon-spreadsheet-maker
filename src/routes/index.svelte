@@ -225,7 +225,7 @@
 
     async function callUploadNawsCodes() {
         const file = document.getElementById('naws_codes_file').files[0];
-        await uploadNawsCodes(file, selectedRootServerForUpload);
+        await uploadNawsCodes(file, dijonBaseUrl, selectedRootServerForUpload);
         // unset current NAWS code file selection (it seems weird to leave it enabled, so that you could trivially upload the same codes again)
         // leave the current server selection set though (could go the other way on this decision)
         nawsCodesFile =  null;

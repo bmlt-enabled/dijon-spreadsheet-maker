@@ -1,7 +1,7 @@
 // upload a file of NAWS codes
 
 import * as XLSX from 'xlsx';  // need to use the standard one rather than the fork for the read function
-export async function uploadNawsCodes (file, selectedRootServer) {
+export async function uploadNawsCodes (file, dijonBaseUrl, selectedRootServer) {
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
     if (workbook.SheetNames.length != 1) {
