@@ -1,0 +1,29 @@
+name: main
+on:
+  push:
+    branches: ['*']
+
+env:
+  NETLIFY_DEPLOY_BRANCH: "pj/netlify"
+
+jobs:
+  netlify-deploy:
+    runs-on: ubuntu-22.04
+    if: contains(github.ref_name, ${{ env.NETLIFY_DEPLOY_BRANCH }})
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: node 16
+        uses: actions/setup-node@v3.5.1
+        with:
+          node-version: 16
+
+      - name: build
+        run: |
+          npm ci && npm run build
+
+      - name: deploy
+        run: |
+          npx netlify deploy --dir=build --prod
+
