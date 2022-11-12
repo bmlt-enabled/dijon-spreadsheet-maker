@@ -1,7 +1,7 @@
 name: main
 on:
   push:
-    branches: ['*']
+    branches: ['pj/netlify']
 
 env:
   NETLIFY_DEPLOY_BRANCH: "pj/netlify"
@@ -9,7 +9,7 @@ env:
 jobs:
   netlify-deploy:
     runs-on: ubuntu-22.04
-    if: contains(github.ref_name, ${{ env.NETLIFY_DEPLOY_BRANCH }})
+#    if: contains(github.ref_name, ${{ env.NETLIFY_DEPLOY_BRANCH }})
     steps:
       - name: checkout
         uses: actions/checkout@v3
