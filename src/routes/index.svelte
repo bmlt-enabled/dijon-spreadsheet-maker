@@ -6,16 +6,15 @@
     import { onMount } from 'svelte';
     import { format, isEqual, isBefore } from 'date-fns';
     import { DateInput } from 'date-picker-svelte';
-    import { RootServer } from '$lib/RootServer';
-    import { ServiceBody } from '$lib/ServiceBody';
+    import { ServiceBody } from '$lib/ServiceBody'; 
     import { Snapshot } from '$lib/Snapshot';
     import { makePureDate } from '$lib/DateUtils';
     import { generateSpreadsheet } from '$lib/GenerateSpreadsheet';
     import { uploadNawsCodes } from '$lib/UploadNawsCodes';
+    import DijonApi from '$lib/DijonApi';
 
-    // const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
-    const dijonBaseUrl = 'http://localhost:8000/';
-    const rootServersUrl = new URL('rootservers', dijonBaseUrl);
+    const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
+    // const dijonBaseUrl = 'http://localhost:8000/';
     let rootServers;
     let selectedRootServer;
     let snapshots;         // all snapshots for the selected server
@@ -85,39 +84,37 @@
     }
 
     async function fetchRootServers() {
-        const response = await fetch(rootServersUrl);
-        if (!response.ok) {
-            rootServersError = `Error fetching root servers - got ${response.status} status from ${rootServersUrl}`
-            return;
-        }
         rootServersError =  null;
-        const _rootServers = [];
-        for (let rawRootServer of await response.json()) {
-            const rootServer = new RootServer(rawRootServer);
-            _rootServers.push(rootServer);
+
+        try {
+            const servers = await DijonApi.listRootServers();
+            // pushes [do not use yet] to end of list
+            rootServers = servers.sort((a,b) => a.name.replace('[do not use yet]', 'ZZZZ').localeCompare(b.name.replace('[do not use yet]', 'ZZZZ')));
+        } catch (error) {
+            rootServersError = `Error fetching root servers - got ${error.response.status}`
         }
-        // hack - put servers whose name starts with '[do not use yet]' at the end of the list
-        rootServers = _rootServers.sort( (a,b) => a.name.replace('[do not use yet]', 'ZZZZ').localeCompare(b.name.replace('[do not use yet]', 'ZZZZ')) );
     }
 
     async function fetchSnapshots() {
+        snapshotsError = null;
+
         if ( !selectedRootServer) {
             snapshotsError = 'No root server selected - unable to get snapshots';
             return;
         }
-        const snapshotsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots`, dijonBaseUrl);
-        const response = await fetch(snapshotsUrl);
-        if (!response.ok) {
-            snapshotsError = `Error fetching snapshots - got ${response.status} status from ${snapshotsUrl}`
+
+        const _snapshots = [];
+        try {
+            for (const snapshot of await DijonApi.listRootServerSnapshots(selectedRootServer.id)) {
+                _snapshots.push(new Snapshot(snapshot.rootServerId, format(snapshot.date, 'yyyy-MM-dd')));
+            };
+        } catch (error) {
+            snapshotsError = `Error fetching snapshots - got ${error.response.status}`
             return;
         }
-        snapshotsError = null;
-        const _snapshots = [];
-        for (let rawSnapshot of await response.json()) {
-            const snapshot = new Snapshot(rawSnapshot.root_server_id, rawSnapshot.date);
-            _snapshots.push(snapshot);
-        }
+
         snapshots = _snapshots;
+
         // find the first and last snapshot
         firstSnapshot = lastSnapshot = snapshots[0];
         for ( let i = 1; i < snapshots.length; i++ ) {
@@ -159,15 +156,16 @@
 
     async function fetchServiceBodies(server, snapshot) {
         if ( server && snapshot ) {
-            const serviceBodiesUrl = new URL(`rootservers/${server.id}/snapshots/${format(snapshot.date, 'yyyy-MM-dd')}/servicebodies`, dijonBaseUrl);
-            const response = await fetch(serviceBodiesUrl);
-            if (!response.ok) {
-                serviceBodiesError = `Error fetching service bodies - got ${response.status} status from ${serviceBodiesUrl}`
+            let rawServiceBodies;
+            try {
+                rawServiceBodies = await DijonApi.listSnapshotServiceBodies(server.id, format(snapshot.date, 'yyyy-MM-dd'));
+            } catch (error) {
+                serviceBodiesError = `Error fetching service bodies - got ${error.response.status}`
                 return;
             }
             serviceBodiesError = null;
             const _allServiceBodies = [];
-            for (let rawServiceBody of await response.json()) {
+            for (let rawServiceBody of rawServiceBodies) {
                 const serviceBody = new ServiceBody(rawServiceBody);
                 _allServiceBodies.push(serviceBody);
             }
@@ -179,7 +177,6 @@
         }
         selectedServiceBody = null;
     }
-
 
     // find the most recent snapshot (if any) that was retrieved on or before d for the currently selected server
     function findSnapshot(desiredDate) {
@@ -219,7 +216,18 @@
     }
 
     async function callGenerateSpreadsheet() {
-        generateSpreadsheetError = await generateSpreadsheet(dijonBaseUrl, selectedRootServer, allServiceBodies, selectedServiceBody,
+        // The login form would do something like this. Look at the token getter/setters in the 
+        // DijonApi module. Note there are two layers. Also note that DijonApi is reading/writing
+        // localStorage for you. Note that we are not yet doing anything with refreshTokens.
+        // try {
+        //     const token = await DijonApi.createToken('dijon', 'dijon');
+        //     DijonApi.token = token;
+        // } catch (error) {
+        //     if (error.response.status === 401) {
+        //         // This means username and password were incorrect
+        //     }
+        // }
+        generateSpreadsheetError = await generateSpreadsheet(selectedRootServer, allServiceBodies, selectedServiceBody,
             startSnapshot, endSnapshot, showOriginalNawsCodes, includeExtraMeetings, excludeWorldIdUpdates);
     }
 

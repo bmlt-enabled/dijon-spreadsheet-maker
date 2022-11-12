@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import * as XLSX from 'xlsx-js-style';  // the open source version of SheetJS doesn't handle styling - use this fork instead
 import { Change } from '$lib/Change';
 import { Meeting } from '$lib/Meeting';
+import DijonApi from '$lib/DijonApi';
 
 // styles for export spreadsheet
 const headerStyle = {font: {bold: true}};
@@ -12,32 +13,31 @@ const changedMeetingStyle = {fill: {fgColor: {rgb: "FF002B"}}};
 const newMeetingStyle = {fill: {fgColor: {rgb: "4D88FF"}}};
 const deletedMeetingStyle = {font: {strike: true}};
 
-export async function generateSpreadsheet(dijonBaseUrl, selectedRootServer, allServiceBodies, selectedServiceBody,
+export async function generateSpreadsheet(selectedRootServer, allServiceBodies, selectedServiceBody,
         startSnapshot, endSnapshot, showOriginalNawsCodes, includeExtraMeetings, excludeWorldIdUpdates) {
     let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders(showOriginalNawsCodes)]);
     styleEntireRow(ws, 0, headerStyle);
-    // for the changesUrl,    need to wait until root server, service body, and dates are known
-    const changesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/changes`, dijonBaseUrl);
-    const nawsCodesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/nawscodes`, dijonBaseUrl);
+
     const startSnapshotDateStr = format(startSnapshot.date, 'yyyy-MM-dd');
     const endSnapshotDateStr = format(endSnapshot.date, 'yyyy-MM-dd');
-    changesUrl.searchParams.append("start_date", startSnapshotDateStr);
-    changesUrl.searchParams.append("end_date", endSnapshotDateStr);
-    changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-    changesUrl.searchParams.append("exclude_world_id_updates", excludeWorldIdUpdates);
-    const changesResponse = await fetch(changesUrl);
-    if (!changesResponse.ok) {
-        return `Error fetching changes - got ${changesResponse.status} status from ${changesUrl}`;
+
+    let rawChanges;
+    try {
+        rawChanges = await DijonApi.listMeetingChanges(selectedRootServer.id, startSnapshot.date, endSnapshot.date, selectedServiceBody?.bmlt_id, excludeWorldIdUpdates);
+    } catch (error) {
+        return `Error fetching changes - got ${error.response.status} status`;
     }
-    const rawChanges = await changesResponse.json();
-    const nawsCodesResponse = await fetch(nawsCodesUrl);
-    if (!nawsCodesResponse.ok) {
-        return `Error fetching NAWS codes - got ${nawsCodesResponse.status} status from ${nawsCodesUrl}`;
+
+    let rawNawsCodes;
+    try {
+        rawNawsCodes = await DijonApi.listServerMeetingNawsCodes(selectedRootServer.id);
+    } catch (error) {
+        return `Error fetching NAWS codes - got ${error.response.status} status`;
     }
-    const rawNawsCodes = await nawsCodesResponse.json();
+
     let nawsCodeDict = {};
     for (let rawNawsCode of rawNawsCodes) {
-        nawsCodeDict[rawNawsCode.bmlt_id] = rawNawsCode.code;
+        nawsCodeDict[rawNawsCode.bmltId] = rawNawsCode.code;
     }
     // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
     // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
@@ -46,48 +46,49 @@ export async function generateSpreadsheet(dijonBaseUrl, selectedRootServer, allS
     let lastRow = 0;
     for (let rawChange of rawChanges.events) {
         lastRow++;
-        const change = new Change(rawChange);
+        const oldMeeting = rawChange.oldMeeting ? new Meeting(rawChange.oldMeeting) : null;
+        const newMeeting = rawChange.newMeeting ? new Meeting(rawChange.newMeeting) : null;
         let oldRow;
         let newRow;
-        switch (change.event_type) {
+        switch (rawChange.eventType) {
             case 'MeetingCreated':
-                newRow = getRowForMeeting(change.new_meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                newRow = getRowForMeeting(newMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, newMeetingStyle);
-                worldIdsWithChanges[change.new_meeting.world_id] = true;
-                bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
+                worldIdsWithChanges[newMeeting.world_id] = true;
+                bmltIdsWithChanges[newMeeting.bmlt_id] = true;
                 break;
             case 'MeetingDeleted':
-                oldRow = getRowForMeeting(change.old_meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
                 addMeetingData(ws, oldRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, deletedMeetingStyle);
-                worldIdsWithChanges[change.old_meeting.world_id] = true;
+                worldIdsWithChanges[oldMeeting.world_id] = true;
                 // the old_meeting won't be in the current meetings
                 break;
             case 'MeetingUpdated':
-                oldRow = getRowForMeeting(change.old_meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
-                newRow = getRowForMeeting(change.new_meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                newRow = getRowForMeeting(newMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
                 // these will probably be the same for the old and new meetings, but add them both anyway to be safe
-                worldIdsWithChanges[change.old_meeting.world_id] = true;
-                worldIdsWithChanges[change.new_meeting.world_id] = true;
-                bmltIdsWithChanges[change.old_meeting.bmlt_id] = true;
-                bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
+                worldIdsWithChanges[oldMeeting.world_id] = true;
+                worldIdsWithChanges[newMeeting.world_id] = true;
+                bmltIdsWithChanges[oldMeeting.bmlt_id] = true;
+                bmltIdsWithChanges[newMeeting.bmlt_id] = true;
                 break;
             default:
-                return `internal error in generateSpreadsheet -- unknown event type: ${change.event_type}`;
+                return `internal error in generateSpreadsheet -- unknown event type: ${rawChange.eventType}`;
         }
     }
     // If includeExtraMeetings is true, add other meetings to the spreadsheet with the same world_id as a changed meeting.
     if (includeExtraMeetings) {
-        const meetingsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots/${endSnapshotDateStr}/meetings`, dijonBaseUrl);
-        meetingsUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-        const meetingsResponse = await fetch(meetingsUrl);
-        if (!meetingsResponse.ok) {
-            return `Error fetching extra meetings - got ${meetingsResponse.status} status from ${meetingsUrl}`;
+        let rawMeetings;
+        try {
+            rawMeetings = await DijonApi.listSnapshotMeetings(selectedRootServer.id, endSnapshotDateStr, selectedServiceBody?.bmlt_id);
+        } catch (error) {
+            return `Error fetching extra meetings - got ${error.response.status} status`;
         }
-        const rawMeetings = await meetingsResponse.json();
+
         for (let rawMeeting of rawMeetings) {
             const meeting = new Meeting(rawMeeting);
             if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {

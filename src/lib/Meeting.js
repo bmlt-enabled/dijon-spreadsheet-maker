@@ -6,39 +6,39 @@ import { stringToDate } from '$lib/DateUtils';
 export class Meeting {
 
     constructor(json) {
-        this.bmlt_id = json.bmlt_id;
+        this.bmlt_id = json.bmltId;
         this.name = json.name;
         this.day = json.day;
-        this.service_body_bmlt_id = json.service_body_bmlt_id;
-        this.venue_type = json.venue_type;
-        this.start_time = json.start_time;
+        this.service_body_bmlt_id = json.serviceBodyBmltId;
+        this.venue_type = json.venueType;
+        this.start_time = json.startTime;
         this.duration = json.duration;
-        this.time_zone = json.time_zone;
+        this.time_zone = json.timeZone;
         this.latitude = json.latitude;
         this.longitude = json.longitude;
         this.published = json.published;
-        this.world_id = json.world_id;
-        this.location_text = json.location_text;
-        this.location_info = json.location_info;
-	    this.location_street = json.location_street;
-	    this.location_city_subsection = json.location_city_subsection;
-        this.location_neighborhood = json.location_neighborhood;
-        this.location_municipality = json.location_municipality;
-        this.location_sub_province = json.location_sub_province;
-        this.location_province = json.location_province;
-        this.location_postal_code_1 = json.location_postal_code_1;
-        this.location_nation = json.location_nation;
-        this.train_lines = json.train_lines;
-        this.bus_lines = json.bus_lines;
+        this.world_id = json.worldId;
+        this.location_text = json.locationText;
+        this.location_info = json.locationInfo;
+	    this.location_street = json.locationStreet;
+	    this.location_city_subsection = json.locationCitySubsection;
+        this.location_neighborhood = json.locationNeighborhood;
+        this.location_municipality = json.locationMunicipality;
+        this.location_sub_province = json.locationSubProvince;
+        this.location_province = json.locationProvince;
+        this.location_postal_code_1 = json.locationPostalCode1;
+        this.location_nation = json.locationNation;
+        this.train_lines = json.trainLines;
+        this.bus_lines = json.busLines;
         this.comments = json.comments;
-        this.virtual_meeting_link = json.virtual_meeting_link;
-        this.phone_meeting_number = json.phone_meeting_number;
-        this.virtual_meeting_additional_info = json.virtual_meeting_additional_info;
-        this.format_bmlt_ids = json.format_bmlt_ids;
-        this.naws_code_override = json.naws_code_override;
-        this.service_body = new ServiceBody(json.service_body);
+        this.virtual_meeting_link = json.virtualMeetingLink;
+        this.phone_meeting_number = json.phoneMeetingNumber;
+        this.virtual_meeting_additional_info = json.virtualMeetingAdditionalInfo;
+        this.format_bmlt_ids = json.formatBmltIds;
+        this.naws_code_override = json.nawsCodeOverride;
+        this.service_body = new ServiceBody(json.serviceBody);
         this.formats = json.formats.map(f => new Format(f));
-        this.last_changed = stringToDate(json.last_changed);
+        this.last_changed = json.lastChanged;
     }
 
     dayString() {
