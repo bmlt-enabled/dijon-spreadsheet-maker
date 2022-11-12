@@ -15,7 +15,7 @@
     import { Snapshot } from '$lib/Snapshot';
     import { makePureDate } from '$lib/DateUitls';
 
-    const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
+    const dijonBaseUrl = 'https://dijon-api.bmlt.io/';
     const rootServersUrl = new URL('rootservers', dijonBaseUrl);
     let rootServers;
     let selectedRootServer;
