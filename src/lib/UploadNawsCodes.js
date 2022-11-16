@@ -1,7 +1,8 @@
 // upload a file of NAWS codes
 
 import * as XLSX from 'xlsx';  // need to use the standard one rather than the fork for the read function
-export async function uploadNawsCodes (file, dijonBaseUrl, selectedRootServer) {
+import DijonApi from '$lib/DijonApi';
+export async function uploadNawsCodes (file, selectedRootServer) {
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data);
     if (workbook.SheetNames.length != 1) {
@@ -17,8 +18,11 @@ export async function uploadNawsCodes (file, dijonBaseUrl, selectedRootServer) {
             updates.push({bmlt_id: r.bmlt_id, code: r.Committee});
         }
     }
-    // batch update meeting NAWS codes here
+    // batch update meeting NAWS codes
+    let response = await DijonApi.batchUpdateMeetingNawsCodes(selectedRootServer.id, updates);
+    // TODO: show response if it's an error of some sort
     // temporarily add additional information to the alert with the specific updates
+    // TODO: remove the extra stuff later
     let s = `uploaded ${updates.length} items; skipped ${rows.length - updates.length} items\n\nroot server id: ${selectedRootServer.id}\nUPDATES:\n`;
     for (let j = 0; j < updates.length; j++) {
         s += `bmlt_id: ${updates[j].bmlt_id} code: ${updates[j].code}\n`;

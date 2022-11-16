@@ -13,8 +13,6 @@
     import { uploadNawsCodes } from '$lib/UploadNawsCodes';
     import DijonApi from '$lib/DijonApi';
 
-    const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
-    // const dijonBaseUrl = 'http://localhost:8000/';
     let rootServers;
     let selectedRootServer;
     let snapshots;         // all snapshots for the selected server
@@ -233,7 +231,17 @@
 
     async function callUploadNawsCodes() {
         const file = document.getElementById('naws_codes_file').files[0];
-        await uploadNawsCodes(file, dijonBaseUrl, selectedRootServerForUpload);
+        // TODO: temporary code that hardwires the user name and password - this will be replaced by a form to fill in
+        try {
+            const token = await DijonApi.createToken('dijon', '*******');
+            DijonApi.token = token;
+        } catch (error) {
+            if (error.response.status === 401) {
+                // This means username and password were incorrect
+                // TODO: show in interface
+            }
+        }
+        await uploadNawsCodes(file, selectedRootServerForUpload);
         // unset current NAWS code file selection (it seems weird to leave it enabled, so that you could trivially upload the same codes again)
         // leave the current server selection set though (could go the other way on this decision)
         nawsCodesFile =  null;
