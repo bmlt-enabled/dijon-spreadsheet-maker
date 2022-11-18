@@ -9,8 +9,7 @@ import {
       this._authorizationHeader = null;
       this._token = null;
       this.token = token;
-      const dijonBaseUrl = 'https://dijon-api.bmlt.dev';
-      // const dijonBaseUrl = 'http://localhost:8000';
+      const dijonBaseUrl = import.meta.env.VITE_DIJON_BASE_URL ? import.meta.env.VITE_DIJON_BASE_URL : 'https://dijon-api.bmlt.dev';
       this.configuration = new Configuration({
         basePath: dijonBaseUrl,
         accessToken: () => this._authorizationHeader ?? '',

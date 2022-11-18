@@ -2,11 +2,11 @@
   "name": "spreadsheet-maker",
   "version": "0.0.1",
   "scripts": {
-    "dev": "svelte-kit dev",
-    "build": "svelte-kit build",
-    "package": "svelte-kit package",
-    "preview": "svelte-kit preview",
-    "deploy": "npm run build && touch ./build/.nojekyll && echo 'dijon.bmlt.dev' > ./build/CNAME && npx gh-pages -d build -t true"
+    "dev": "export VITE_DIJON_BASE_URL=$npm_config_server && svelte-kit dev",
+    "build": "export VITE_DIJON_BASE_URL=$npm_config_server && svelte-kit build",
+    "package": "export VITE_DIJON_BASE_URL=$npm_config_server && svelte-kit package",
+    "preview": "export VITE_DIJON_BASE_URL=$npm_config_server && svelte-kit preview",
+    "deploy": "export VITE_DIJON_BASE_URL=$npm_config_server && npm run build && touch ./build/.nojekyll && echo 'dijon.bmlt.dev' > ./build/CNAME && npx gh-pages -d build -t true"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "next",

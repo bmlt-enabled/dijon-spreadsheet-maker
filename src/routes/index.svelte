@@ -52,6 +52,8 @@
     const deletedMeetingStyle = {font: {strike: true}};
 
     // variables for NAWS code upload
+    let username = 'dijon';
+    let password;
     let selectedRootServerForUpload;
     let nawsCodesFile;
 
@@ -231,19 +233,23 @@
 
     async function callUploadNawsCodes() {
         const file = document.getElementById('naws_codes_file').files[0];
-        // TODO: temporary code that hardwires the user name and password - this will be replaced by a form to fill in
         try {
-            const token = await DijonApi.createToken('dijon', '*******');
+            const token = await DijonApi.createToken(username, password);
             DijonApi.token = token;
         } catch (error) {
             if (error.response.status === 401) {
-                // This means username and password were incorrect
-                // TODO: show in interface
+                alert('invalid username or password');
+                return;
+            } else {
+                alert('unknown error trying to authenticate with the server');
+                return;
             }
         }
-        await uploadNawsCodes(file, selectedRootServerForUpload);
+        let response = await uploadNawsCodes(file, selectedRootServerForUpload);
+        alert(response);
+        // leave the username and password
+        // also leave the current server selection set though (could go the other way on this decision)
         // unset current NAWS code file selection (it seems weird to leave it enabled, so that you could trivially upload the same codes again)
-        // leave the current server selection set though (could go the other way on this decision)
         nawsCodesFile =  null;
         document.getElementById("naws_codes_file").value = "";
     }
@@ -265,7 +271,7 @@
 <section>
     <table>
         <tr>
-            <td class="selectionLabel">Server:</td>
+            <td class="inputLabel">Server:</td>
             <td>
                 {#if rootServers}
                     <form>
@@ -286,7 +292,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Start Date:</td>
+            <td class="inputLabel">Start Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
                     <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
@@ -297,7 +303,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">End Date:</td>
+            <td class="inputLabel">End Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
                     <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
@@ -306,7 +312,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Service Body:</td>
+            <td class="inputLabel">Service Body:</td>
             <td>
                 {#if rootServers && allServiceBodies}
                     <form>
@@ -346,7 +352,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Extra Meetings:</td>
+            <td class="inputLabel">Extra Meetings:</td>
             <td>
                 <label>
                     <input type=checkbox bind:checked={includeExtraMeetings}>
@@ -355,7 +361,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">World ID changes:</td>
+            <td class="inputLabel">World ID changes:</td>
             <td>
                 <label>
                     <input type=checkbox bind:checked={excludeWorldIdUpdates}>
@@ -462,15 +468,23 @@
 <section>
     <table>
         <tr>
-            <td class="selectionLabel">Spreadsheet:&nbsp;</td>
+            <td class="inputLabel">Username:&nbsp;</td>
             <td>
-                <form method="post">
-                    <input type="file" id="naws_codes_file" name="naws_codes_file" accept=".xlsx,.xls,.csv" bind:value={nawsCodesFile}>
+                <form>
+                    <input type="text" id="username" name="username" bind:value={username}>
                 </form>
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Server:</td>
+            <td class="inputLabel">Password:&nbsp;</td>
+            <td>
+                <form>
+                    <input type="password" id="password" name="password" bind:value={password}>
+                </form>
+            </td>
+        </tr>
+        <tr>
+            <td class="inputLabel">Server:</td>
             <td>
                 {#if rootServers}
                     <form>
@@ -490,13 +504,21 @@
                 {/if}
             </td>
         </tr>
+        <tr>
+            <td class="inputLabel">Spreadsheet:&nbsp;</td>
+            <td>
+                <form>
+                    <input type="file" id="naws_codes_file" name="naws_codes_file" accept=".xlsx,.xls,.csv" bind:value={nawsCodesFile}>
+                </form>
+            </td>
+        </tr>
     </table>
     <p></p>
 </section>
 
 <section>
     <div>
-        <button disabled={ !nawsCodesFile || !selectedRootServerForUpload } on:click={callUploadNawsCodes}>
+        <button disabled={ !username || !password || !nawsCodesFile || !selectedRootServerForUpload } on:click={callUploadNawsCodes}>
             Upload spreadsheet to override NAWS codes for selected server
         </button>
         <p></p>
@@ -528,7 +550,7 @@
         min-width: 28em;
     }
 
-    .selectionLabel {
+    .inputLabel {
         text-align: left;
         font-weight: bold;
     }

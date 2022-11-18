@@ -15,18 +15,14 @@ export async function uploadNawsCodes (file, selectedRootServer) {
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         if ('Committee' in r && 'bmlt_id' in r && Number.isInteger(r.bmlt_id)) {
-            updates.push({bmlt_id: r.bmlt_id, code: r.Committee});
+            updates.push({bmltId: r.bmlt_id, code: r.Committee});
         }
     }
     // batch update meeting NAWS codes
-    let response = await DijonApi.batchUpdateMeetingNawsCodes(selectedRootServer.id, updates);
-    // TODO: show response if it's an error of some sort
-    // temporarily add additional information to the alert with the specific updates
-    // TODO: remove the extra stuff later
-    let s = `uploaded ${updates.length} items; skipped ${rows.length - updates.length} items\n\nroot server id: ${selectedRootServer.id}\nUPDATES:\n`;
-    for (let j = 0; j < updates.length; j++) {
-        s += `bmlt_id: ${updates[j].bmlt_id} code: ${updates[j].code}\n`;
+    try {
+        await DijonApi.batchUpdateMeetingNawsCodes(selectedRootServer.id, updates);
+        return `uploaded ${updates.length} codes, skipped ${rows.length - updates.length} codes for ${selectedRootServer.name}`;
+    } catch (error) {
+        return `server error trying to load updates -- response status is ${error.response.status}`;
     }
-    alert(s);
-    return;
 }
