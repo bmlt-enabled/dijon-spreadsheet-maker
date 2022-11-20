@@ -17,7 +17,7 @@ jobs:
 
       - name: build
         run: |
-          npm ci && npm run build
+          npm ci && npm run build --server='https://dijon-api.bmlt.io'
 
       - name: deploy
         run: |
