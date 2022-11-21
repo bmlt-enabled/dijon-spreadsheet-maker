@@ -94,7 +94,7 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
             if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
                 lastRow++;
                 const row = getRowForMeeting(meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
-                addMeetingData(ws, row, lastRow);
+                addMeetingData(ws, row, lastRow, showOriginalNawsCodes);
             }
         }
     }
