@@ -1,8 +1,9 @@
+import { browser } from "$app/env";
 import {
   Configuration,
   DefaultApi,
 } from 'dijon-client';
-  
+
   class ApiClient extends DefaultApi {
     constructor(token) {
       super();
@@ -42,21 +43,25 @@ import {
     static instance = new ApiClientWrapper();
   
     constructor(token) {
-      if (!token) {
-        const tokenJson = localStorage.getItem('token');
-        if (tokenJson) {
-          token = JSON.parse(tokenJson);
+      if (browser) {
+        if (!token) {
+          const tokenJson = localStorage.getItem('token');
+          if (tokenJson) {
+            token = JSON.parse(tokenJson);
+          }
         }
       }
-  
+
       this.api = new ApiClient(token);
     }
   
     set token(token) {
-      if (token) {
-        localStorage.setItem('token', JSON.stringify(token));
-      } else {
-        localStorage.removeItem('token');
+      if (browser) {
+        if (token) {
+          localStorage.setItem('token', JSON.stringify(token));
+        } else {
+          localStorage.removeItem('token');
+        }
       }
   
       this.api.token = token;
@@ -104,4 +109,3 @@ import {
   }
   
   export default ApiClientWrapper.instance;
-  
