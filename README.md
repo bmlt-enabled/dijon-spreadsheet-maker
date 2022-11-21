@@ -6,18 +6,18 @@ The spreadsheet maker is a UI for the server.  It provides a web-based query bui
 
 ## Dijon Server
 
-The default URL for the dijon server used by the spreadsheet maker is https://dijon-api.bmlt.dev. This can be overridden with an argument to the `npm run` command (see below).
+The default URL for the dijon server used by the spreadsheet maker is https://dijon-api.bmlt.dev. This can be overridden for any of the `npm run` commands using the `--server` flag.
 
 ## Development Mode
 
-The spreadsheet maker is written using [SvelteKit](https://kit.svelte.dev/docs/introduction).  Clone this repo, connect to the project directory, and install dependencies with `npm install`.
+The spreadsheet maker is written using [SvelteKit](https://kit.svelte.dev/docs/introduction).  Clone this repo, connect to the project directory, and install dependencies with `npm install`. If the server API changes, run `npm upgrade dijon-client`.
 
-Then the following command will start a spreadsheet maker server that can be accessed on http://localhost:3000.
+The following command will start a spreadsheet maker server that can be accessed on http://localhost:3000.
 
 ```bash
 npm run dev
 ```
-To use a different dijon server use the `--server` flag. For example, this command will use a dijon server running on your local machine instead (useful for development and testing).
+As noted above, to use a different dijon server use the `--server` flag. For example, this command will use a dijon server running on your local machine instead (useful for development and testing).
 
 ```bash
 npm run dev --server='http://localhost:8000'

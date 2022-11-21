@@ -6,6 +6,7 @@
     import { onMount } from 'svelte';
     import { format, isEqual, isBefore } from 'date-fns';
     import { DateInput } from 'date-picker-svelte';
+    import { Server } from '$lib/Server';
     import { ServiceBody } from '$lib/ServiceBody'; 
     import { Snapshot } from '$lib/Snapshot';
     import { makePureDate } from '$lib/DateUtils';
@@ -85,13 +86,13 @@
 
     async function fetchRootServers() {
         rootServersError =  null;
-
         try {
             const servers = await DijonApi.listRootServers();
-            // pushes [do not use yet] to end of list
-            rootServers = servers.sort((a,b) => a.name.replace('[do not use yet]', 'ZZZZ').localeCompare(b.name.replace('[do not use yet]', 'ZZZZ')));
+            rootServers = servers.map(s => new Server(s));
+            // move servers whose names start with '[' to end of list
+            rootServers.sort((a,b) => a.sortName().localeCompare(b.sortName()));
         } catch (error) {
-            rootServersError = `Error fetching root servers - got ${error.response.status}`
+            rootServersError = `Error fetching root servers - got ${error.response.status}`;
         }
     }
 
@@ -109,7 +110,7 @@
                 _snapshots.push(new Snapshot(snapshot.rootServerId, format(snapshot.date, 'yyyy-MM-dd')));
             };
         } catch (error) {
-            snapshotsError = `Error fetching snapshots - got ${error.response.status}`
+            snapshotsError = `Error fetching snapshots - got ${error.response.status}`;
             return;
         }
 
@@ -279,7 +280,7 @@
                             <option disabled selected value> -- select a server -- </option>
                             {#each rootServers as server }
                                 <option value={server}>
-                                    {server.name}
+                                    {server.menuName()}
                                 </option>
                             {/each}
                         </select>
@@ -492,7 +493,7 @@
                             <option disabled selected value> -- select a server -- </option>
                             {#each rootServers as serverForUpload }
                                 <option value={serverForUpload}>
-                                    {serverForUpload.name}
+                                    {serverForUpload.menuName()}
                                 </option>
                             {/each}
                         </select>
