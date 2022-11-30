@@ -28,17 +28,6 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
         return `Error fetching changes - got ${error.response.status} status`;
     }
 
-    let rawNawsCodes;
-    try {
-        rawNawsCodes = await DijonApi.listServerMeetingNawsCodes(selectedRootServer.id);
-    } catch (error) {
-        return `Error fetching NAWS codes - got ${error.response.status} status`;
-    }
-
-    let nawsCodeDict = {};
-    for (let rawNawsCode of rawNawsCodes) {
-        nawsCodeDict[rawNawsCode.bmltId] = rawNawsCode.code;
-    }
     // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
     // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
     const worldIdsWithChanges = {};
@@ -52,22 +41,22 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
         let newRow;
         switch (rawChange.eventType) {
             case 'MeetingCreated':
-                newRow = getRowForMeeting(newMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                newRow = getRowForMeeting(newMeeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, newMeetingStyle);
                 worldIdsWithChanges[newMeeting.world_id] = true;
                 bmltIdsWithChanges[newMeeting.bmlt_id] = true;
                 break;
             case 'MeetingDeleted':
-                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, oldRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, deletedMeetingStyle);
                 worldIdsWithChanges[oldMeeting.world_id] = true;
                 // the old_meeting won't be in the current meetings
                 break;
             case 'MeetingUpdated':
-                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
-                newRow = getRowForMeeting(newMeeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                oldRow = getRowForMeeting(oldMeeting, allServiceBodies, showOriginalNawsCodes);
+                newRow = getRowForMeeting(newMeeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
                 // these will probably be the same for the old and new meetings, but add them both anyway to be safe
@@ -93,7 +82,7 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
             const meeting = new Meeting(rawMeeting);
             if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
                 lastRow++;
-                const row = getRowForMeeting(meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes);
+                const row = getRowForMeeting(meeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, row, lastRow, showOriginalNawsCodes);
             }
         }
@@ -160,10 +149,9 @@ function exportSpreadsheetHeaders(showOriginalNawsCodes) {
 }
 
 // if you change the return value in the getRowForMeeting function, be sure to also change exportSpreadsheetHeaders
-function getRowForMeeting(meeting, allServiceBodies, nawsCodeDict, showOriginalNawsCodes) {
-    const overridden = nawsCodeDict.hasOwnProperty(meeting.bmlt_id);
-    const worldId = overridden ? nawsCodeDict[meeting.bmlt_id] : meeting.world_id;
-    const original = overridden ? meeting.world_id : '';
+function getRowForMeeting(meeting, allServiceBodies, showOriginalNawsCodes) {
+    const worldId = meeting.naws_code_override ?? meeting.world_id;
+    const original = meeting.naws_code_override ? meeting.world_id : '';
     const worldIdCols = showOriginalNawsCodes ? [worldId, original] : [worldId];
     const formats = meeting.nawsFormats();
     return worldIdCols.concat([
