@@ -5,18 +5,15 @@
 <script>
     import { onMount } from 'svelte';
     import { format, isEqual, isBefore } from 'date-fns';
-    import { DateInput } from 'date-picker-svelte'
-    import * as XLSX from 'xlsx-js-style';  // the open source version of SheetJS doesn't handle styling - use this fork instead
-    import { Change } from '$lib/Change';
-    import { Format } from '$lib/Format';
-    import { Meeting } from '$lib/Meeting';
-    import { RootServer } from '$lib/RootServer';
-    import { ServiceBody } from '$lib/ServiceBody';
+    import { DateInput } from 'date-picker-svelte';
+    import { Server } from '$lib/Server';
+    import { ServiceBody } from '$lib/ServiceBody'; 
     import { Snapshot } from '$lib/Snapshot';
-    import { makePureDate } from '$lib/DateUitls';
+    import { makePureDate } from '$lib/DateUtils';
+    import { generateSpreadsheet } from '$lib/GenerateSpreadsheet';
+    import { uploadNawsCodes } from '$lib/UploadNawsCodes';
+    import DijonApi from '$lib/DijonApi';
 
-    const dijonBaseUrl = 'https://dijon-api.bmlt.dev/';
-    const rootServersUrl = new URL('rootservers', dijonBaseUrl);
     let rootServers;
     let selectedRootServer;
     let snapshots;         // all snapshots for the selected server
@@ -32,6 +29,7 @@
     let selectFromOnlyZonesAndRegions = true;
     let serviceBodies;     // service bodies to show in menu
     let selectedServiceBody;
+    let showOriginalNawsCodes = false;
     let includeExtraMeetings = true;
     let excludeWorldIdUpdates = true;
 
@@ -40,8 +38,7 @@
     let snapshotsError = null;              // error retrieving the snapshots from the selected root server
     let serviceBodiesError = null;          // error retrieving the service bodies from the selected snapshot
     let dateSelectionError = null;          // error if the start snapshot date isn't before the end snapshot date
-    let changesError = null;                // error retrieving the set of changed meetings
-    let meetingsError = null;               // error retrieving all the meetings (used if includeExtraMeetings is true)
+    let generateSpreadsheetError = null;    // error from the generateSpreadsheet function, or null if it worked ok
     // warnings
     let missingStartSnapshotWarning = null; // warning if there isn't a snapshot exactly on the startDate
     let missingEndSnapshotWarning = null;   // warning if there isn't a snapshot exactly on the endDate
@@ -54,6 +51,12 @@
     const changedMeetingStyle = {fill: {fgColor: {rgb: "FF002B"}}};
     const newMeetingStyle = {fill: {fgColor: {rgb: "4D88FF"}}};
     const deletedMeetingStyle = {font: {strike: true}};
+
+    // variables for NAWS code upload
+    let username = 'dijon';
+    let password;
+    let selectedRootServerForUpload;
+    let nawsCodesFile;
 
     onMount(() => {
         fetchRootServers();
@@ -70,7 +73,7 @@
         `Warning: couldn't find a snapshot on the exact start date -- using one from ${format(startSnapshot.date, 'yyyy-MM-dd')} instead`);
     $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = isEqual(endSnapshot.date,endDate) ? null :
         `Warning: couldn't find a snapshot on the exact end date -- using one from ${format(endSnapshot.date, 'yyyy-MM-dd')} instead`);
-    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, changesError, meetingsError);
+    $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, generateSpreadsheetError);
     $: warnings = concatErrorsOrWarnings(missingStartSnapshotWarning, missingEndSnapshotWarning);
 
     // This ought to work to keep serviceBodies up-to-date, but changing the selectFromOnlyZonesAndRegions checkbox doesn't
@@ -82,39 +85,37 @@
     }
 
     async function fetchRootServers() {
-        const response = await fetch(rootServersUrl);
-        if (!response.ok) {
-            rootServersError = `Error fetching root servers - got ${response.status} status from ${rootServersUrl}`
-            return;
-        }
         rootServersError =  null;
-        const _rootServers = [];
-        for (let rawRootServer of await response.json()) {
-            const rootServer = new RootServer(rawRootServer);
-            _rootServers.push(rootServer);
+        try {
+            const servers = await DijonApi.listRootServers();
+            rootServers = servers.map(s => new Server(s));
+            // move servers whose names start with '[' to end of list
+            rootServers.sort((a,b) => a.sortName().localeCompare(b.sortName()));
+        } catch (error) {
+            rootServersError = `Error fetching root servers - got ${error.response.status}`;
         }
-        // hack - put servers whose name starts with '[do not use yet]' at the end of the list
-        rootServers = _rootServers.sort( (a,b) => a.name.replace('[do not use yet]', 'ZZZZ').localeCompare(b.name.replace('[do not use yet]', 'ZZZZ')) );
     }
 
     async function fetchSnapshots() {
+        snapshotsError = null;
+
         if ( !selectedRootServer) {
             snapshotsError = 'No root server selected - unable to get snapshots';
             return;
         }
-        const snapshotsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots`, dijonBaseUrl);
-        const response = await fetch(snapshotsUrl);
-        if (!response.ok) {
-            snapshotsError = `Error fetching snapshots - got ${response.status} status from ${snapshotsUrl}`
+
+        const _snapshots = [];
+        try {
+            for (const snapshot of await DijonApi.listRootServerSnapshots(selectedRootServer.id)) {
+                _snapshots.push(new Snapshot(snapshot.rootServerId, format(snapshot.date, 'yyyy-MM-dd')));
+            };
+        } catch (error) {
+            snapshotsError = `Error fetching snapshots - got ${error.response.status}`;
             return;
         }
-        snapshotsError = null;
-        const _snapshots = [];
-        for (let rawSnapshot of await response.json()) {
-            const snapshot = new Snapshot(rawSnapshot.root_server_id, rawSnapshot.date);
-            _snapshots.push(snapshot);
-        }
+
         snapshots = _snapshots;
+
         // find the first and last snapshot
         firstSnapshot = lastSnapshot = snapshots[0];
         for ( let i = 1; i < snapshots.length; i++ ) {
@@ -156,15 +157,16 @@
 
     async function fetchServiceBodies(server, snapshot) {
         if ( server && snapshot ) {
-            const serviceBodiesUrl = new URL(`rootservers/${server.id}/snapshots/${format(snapshot.date, 'yyyy-MM-dd')}/servicebodies`, dijonBaseUrl);
-            const response = await fetch(serviceBodiesUrl);
-            if (!response.ok) {
-                serviceBodiesError = `Error fetching service bodies - got ${response.status} status from ${serviceBodiesUrl}`
+            let rawServiceBodies;
+            try {
+                rawServiceBodies = await DijonApi.listSnapshotServiceBodies(server.id, format(snapshot.date, 'yyyy-MM-dd'));
+            } catch (error) {
+                serviceBodiesError = `Error fetching service bodies - got ${error.response.status}`
                 return;
             }
             serviceBodiesError = null;
             const _allServiceBodies = [];
-            for (let rawServiceBody of await response.json()) {
+            for (let rawServiceBody of rawServiceBodies) {
                 const serviceBody = new ServiceBody(rawServiceBody);
                 _allServiceBodies.push(serviceBody);
             }
@@ -176,7 +178,6 @@
         }
         selectedServiceBody = null;
     }
-
 
     // find the most recent snapshot (if any) that was retrieved on or before d for the currently selected server
     function findSnapshot(desiredDate) {
@@ -215,198 +216,43 @@
         return sbs.sort( (a,b) => a.name.localeCompare(b.name) );
     }
 
-    async function generateSpreadsheet() {
-        let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders]);
-        styleEntireRow(ws, 0, headerStyle);
-        // for the changesUrl,    need to wait until root server, service body, and dates are known
-        const changesUrl = new URL(`rootservers/${selectedRootServer.id}/meetings/changes`, dijonBaseUrl);
-        const startSnapshotDateStr = format(startSnapshot.date, 'yyyy-MM-dd');
-        const endSnapshotDateStr = format(endSnapshot.date, 'yyyy-MM-dd');
-        changesUrl.searchParams.append("start_date", startSnapshotDateStr);
-        changesUrl.searchParams.append("end_date", endSnapshotDateStr);
-        changesUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-        changesUrl.searchParams.append("exclude_world_id_updates", excludeWorldIdUpdates);
-        const response = await fetch(changesUrl);
-        if (!response.ok) {
-            changesError = `Error fetching changes - got ${response.status} status from ${changesUrl}`;
-            return;
-        }
-        changesError = null;
-        const rawChanges = await response.json();
-        // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
-        // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
-        const worldIdsWithChanges = {};
-        const bmltIdsWithChanges = {};
-        let lastRow = 0;
-        for (let rawChange of rawChanges.events) {
-            lastRow++;
-            const change = new Change(rawChange);
-            let oldRow;
-            let newRow;
-            switch (change.event_type) {
-                case 'MeetingCreated':
-                    newRow = getRowForMeeting(change.new_meeting);
-                    addMeetingData(ws, newRow, lastRow);
-                    styleEntireRow(ws, lastRow, newMeetingStyle);
-                    worldIdsWithChanges[change.new_meeting.world_id] = true;
-                    bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
-                    break;
-                case 'MeetingDeleted':
-                    oldRow = getRowForMeeting(change.old_meeting);
-                    addMeetingData(ws, oldRow, lastRow);
-                    styleEntireRow(ws, lastRow, deletedMeetingStyle);
-                    worldIdsWithChanges[change.old_meeting.world_id] = true;
-                    // the old_meeting won't be in the current meetings
-                    break;
-                case 'MeetingUpdated':
-                    oldRow = getRowForMeeting(change.old_meeting);
-                    newRow = getRowForMeeting(change.new_meeting);
-                    addMeetingData(ws, newRow, lastRow);
-                    styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
-                    // these will probably be the same for the old and new meetings, but add them both anyway to be safe
-                    worldIdsWithChanges[change.old_meeting.world_id] = true;
-                    worldIdsWithChanges[change.new_meeting.world_id] = true;
-                    bmltIdsWithChanges[change.old_meeting.bmlt_id] = true;
-                    bmltIdsWithChanges[change.new_meeting.bmlt_id] = true;
-                    break;
-                default:
-                    console.log(`unknown event type: ${change.event_type}`);    // sometime: better error handling
-            }
-        }
-        // If includeExtraMeetings is true, add other meetings to the spreadsheet with the same world_id as a changed meeting.
-        if (includeExtraMeetings) {
-            const meetingsUrl = new URL(`rootservers/${selectedRootServer.id}/snapshots/${endSnapshotDateStr}/meetings`, dijonBaseUrl);
-            meetingsUrl.searchParams.append("service_body_bmlt_ids", selectedServiceBody.bmlt_id);
-            const response2 = await fetch(meetingsUrl);
-            if (!response2.ok) {
-                meetingsError = `Error fetching extra meetings - got ${response2.status} status from ${meetingsUrl}`;
+    async function callGenerateSpreadsheet() {
+        // The login form would do something like this. Look at the token getter/setters in the 
+        // DijonApi module. Note there are two layers. Also note that DijonApi is reading/writing
+        // localStorage for you. Note that we are not yet doing anything with refreshTokens.
+        // try {
+        //     const token = await DijonApi.createToken('dijon', 'dijon');
+        //     DijonApi.token = token;
+        // } catch (error) {
+        //     if (error.response.status === 401) {
+        //         // This means username and password were incorrect
+        //     }
+        // }
+        generateSpreadsheetError = await generateSpreadsheet(selectedRootServer, allServiceBodies, selectedServiceBody,
+            startSnapshot, endSnapshot, showOriginalNawsCodes, includeExtraMeetings, excludeWorldIdUpdates);
+    }
+
+    async function callUploadNawsCodes() {
+        const file = document.getElementById('naws_codes_file').files[0];
+        try {
+            const token = await DijonApi.createToken(username, password);
+            DijonApi.token = token;
+        } catch (error) {
+            if (error.response.status === 401) {
+                alert('invalid username or password');
+                return;
+            } else {
+                alert('unknown error trying to authenticate with the server');
                 return;
             }
-            meetingsError = null;
-            const rawMeetings = await response2.json();
-            for (let rawMeeting of rawMeetings) {
-                const meeting = new Meeting(rawMeeting);
-                if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
-                    lastRow++;
-                    const row = getRowForMeeting(meeting);
-                    addMeetingData(ws, row, lastRow);
-                }
-            }
         }
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, ws, "Changes");
-        const fileName = `BMLT_${selectedServiceBody.world_id}_changes_from_${startSnapshotDateStr}_to_${endSnapshotDateStr}.xlsx`;
-        // use writeFile since writeFileXLSX isn't available in the xlsx-js-style fork
-        XLSX.writeFile(workbook, fileName);
-    }
-
-    function addMeetingData(ws, row, rowIndex) {
-        // change nulls to empty strings (nulls in the spreadsheet won't accept the style changes)
-        const newRow = row.map( c => c === null ? '' : c);
-        XLSX.utils.sheet_add_aoa(ws, [newRow], {origin: -1});
-        // fix the format on the LastChanged column to be a date -- all others can remain general format
-        // (Excel didn't like having an empty value with a date format, hence the check)
-        const lastChangedCol = exportSpreadsheetHeaders.indexOf('LastChanged');
-        if ( row[lastChangedCol] ) {
-            const cell_ref = XLSX.utils.encode_cell({c: exportSpreadsheetHeaders.indexOf('LastChanged'), r: rowIndex});
-            ws[cell_ref].t = 'd';
-        }
-    }
-
-    // if you change the headers below, make sure to also change the return value in the getRowForMeeting function
-    const exportSpreadsheetHeaders = [
-        'Committee',
-        'CommitteeName',
-        'AreaRegion',
-        'ParentName',
-        'Day',
-        'Time',
-        'Room',
-        'Closed',
-        'WheelChr',
-        'Place',
-        'Address',
-        'City',
-        'LocBorough',
-        'State',
-        'Zip',
-        'Directions',
-        'Format1',
-        'Format2',
-        'Format3',
-        'Format4',
-        'Format5',
-        'Language1',
-        'Language2',
-        'Language3',
-        'unpublished',
-        'VirtualMeetingLink',
-        'VirtualMeetingInfo',
-        'PhoneMeetingNumber',
-        'Country',
-        'LastChanged',
-        'Longitude',
-        'Latitude',
-        'TimeZone',
-        'bmlt_id',
-    ];
-
-    // if you change the return value in the getRowForMeeting function, be sure to also change exportSpreadsheetHeaders
-    function getRowForMeeting(meeting) {
-        let formats = meeting.nawsFormats();
-        return [
-            meeting.world_id,                              // Committee
-            meeting.name,                                  // CommitteeName
-            meeting.serviceBodyWorldId(allServiceBodies),  // AreaRegion
-            meeting.serviceBodyName(allServiceBodies),     // ParentName
-            meeting.dayString(),                           // Day
-            meeting.start_time,                            // Time -- TODO fix the formatting (no seconds, colons etc)
-            meeting.nonNawsFormats(),                      // Room  this is actually non-NAWS formats, despite the column name
-            meeting.openOrClosed(),                        // Closed
-            meeting.wheelChairAccessible(),                // WheelChr
-            meeting.location_text,                         // Place
-            meeting.location_street,                       // Address
-            meeting.location_municipality,                 // City
-            meeting.location_neighborhood,                 // LocBorough
-            meeting.location_province,                     // State
-            meeting.location_postal_code_1,                // Zip
-            meeting.locationInfoAndComments(),             // Directions
-            formats[0],                                    // Format1
-            formats[1],                                    // Format2
-            formats[2],                                    // Format3
-            formats[3],                                    // Format4
-            formats[4],                                    // Format5
-            meeting.language(),                            // Language1
-            '',                                            // Language2 -- maybe omit since always empty?
-            '',                                            // Language3 -- maybe omit since always empty?
-            meeting.published ? '' : '1',                  // unpublished
-            meeting.virtual_meeting_link,                  // VirtualMeetingLink
-            meeting.virtual_meeting_additional_info,       // VirtualMeetingInfo
-            meeting.phone_meeting_number,                  // PhoneMeetingNumber
-            meeting.location_nation,                       // Country
-            meeting.lastChangedExcelFormat(),              // LastChanged
-            meeting.longitude,                             // Longitude
-            meeting.latitude,                              // Latitude
-            meeting.time_zone,                             // TimeZone
-            meeting.bmlt_id,                               // bmlt_id
-        ];
-    }
-
-    // apply a style to every cell in the given row
-    function styleEntireRow(ws, row, style) {
-        for (let i = 0; i < exportSpreadsheetHeaders.length; i++) {
-            let cell_ref = XLSX.utils.encode_cell({c: i, r: row});
-            ws[cell_ref].s = style;
-        }
-    }
-
-    function styleChangedCells(ws, row, style, oldRow, newRow) {
-        for (let i = 0; i < newRow.length; i++) {
-            if ( oldRow[i] != newRow[i] ) {
-                let cell_ref = XLSX.utils.encode_cell({c: i, r: row});
-                ws[cell_ref].s = style;
-            }
-        }
+        let response = await uploadNawsCodes(file, selectedRootServerForUpload);
+        alert(response);
+        // leave the username and password
+        // also leave the current server selection set though (could go the other way on this decision)
+        // unset current NAWS code file selection (it seems weird to leave it enabled, so that you could trivially upload the same codes again)
+        nawsCodesFile =  null;
+        document.getElementById("naws_codes_file").value = "";
     }
 
 </script>
@@ -426,7 +272,7 @@
 <section>
     <table>
         <tr>
-            <td class="selectionLabel">Server:</td>
+            <td class="inputLabel">Server:</td>
             <td>
                 {#if rootServers}
                     <form>
@@ -434,7 +280,7 @@
                             <option disabled selected value> -- select a server -- </option>
                             {#each rootServers as server }
                                 <option value={server}>
-                                    {server.name}
+                                    {server.menuName()}
                                 </option>
                             {/each}
                         </select>
@@ -447,7 +293,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Start Date:</td>
+            <td class="inputLabel">Start Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
                     <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
@@ -458,7 +304,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">End Date:</td>
+            <td class="inputLabel">End Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
                     <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
@@ -467,7 +313,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Service Body:</td>
+            <td class="inputLabel">Service Body:</td>
             <td>
                 {#if rootServers && allServiceBodies}
                     <form>
@@ -498,7 +344,16 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">Extra Meetings:</td>
+            <td></td>
+            <td>
+                <label>
+                    <input type=checkbox bind:checked={showOriginalNawsCodes}>
+                    Include original NAWS codes in spreadsheet as well as overrides
+                </label>
+            </td>
+        </tr>
+        <tr>
+            <td class="inputLabel">Extra Meetings:</td>
             <td>
                 <label>
                     <input type=checkbox bind:checked={includeExtraMeetings}>
@@ -507,7 +362,7 @@
             </td>
         </tr>
         <tr>
-            <td class="selectionLabel">World ID changes:</td>
+            <td class="inputLabel">World ID changes:</td>
             <td>
                 <label>
                     <input type=checkbox bind:checked={excludeWorldIdUpdates}>
@@ -562,6 +417,10 @@
             <td class="informationItem">{selectedServiceBody?.name ?? 'none'}</td>
         </tr>
         <tr>
+            <td>Include original NAWS codes:</td>
+            <td class="informationItem">{showOriginalNawsCodes}</td>
+        </tr>
+        <tr>
             <td>Include extra meetings:</td>
             <td class="informationItem">{includeExtraMeetings}</td>
         </tr>
@@ -596,9 +455,75 @@
 <section>
     <p></p>
     <button disabled={ !selectedRootServer || !startSnapshot || !endSnapshot || !selectedServiceBody || dateSelectionError }
-            on:click={ generateSpreadsheet }>
+            on:click={ callGenerateSpreadsheet }>
         Generate spreadsheet
     </button>
+    <p></p>
+</section>
+
+<section>
+    <hr class="thick">
+    <h2>NAWS Codes Upload</h2>
+</section>
+
+<section>
+    <table>
+        <tr>
+            <td class="inputLabel">Username:&nbsp;</td>
+            <td>
+                <form>
+                    <input type="text" id="username" name="username" bind:value={username}>
+                </form>
+            </td>
+        </tr>
+        <tr>
+            <td class="inputLabel">Password:&nbsp;</td>
+            <td>
+                <form>
+                    <input type="password" id="password" name="password" bind:value={password}>
+                </form>
+            </td>
+        </tr>
+        <tr>
+            <td class="inputLabel">Server:</td>
+            <td>
+                {#if rootServers}
+                    <form>
+                        <select class="selectionMenu" bind:value={selectedRootServerForUpload}>
+                            <option disabled selected value> -- select a server -- </option>
+                            {#each rootServers as serverForUpload }
+                                <option value={serverForUpload}>
+                                    {serverForUpload.menuName()}
+                                </option>
+                            {/each}
+                        </select>
+                    </form>
+                {:else if rootServersError}
+                    <p style="color: red">Error trying to fetch root servers</p>
+                {:else}
+                    <p>...retrieving servers</p>
+                {/if}
+            </td>
+        </tr>
+        <tr>
+            <td class="inputLabel">Spreadsheet:&nbsp;</td>
+            <td>
+                <form>
+                    <input type="file" id="naws_codes_file" name="naws_codes_file" accept=".xlsx,.xls,.csv" bind:value={nawsCodesFile}>
+                </form>
+            </td>
+        </tr>
+    </table>
+    <p></p>
+</section>
+
+<section>
+    <div>
+        <button disabled={ !username || !password || !nawsCodesFile || !selectedRootServerForUpload } on:click={callUploadNawsCodes}>
+            Upload spreadsheet to override NAWS codes for selected server
+        </button>
+        <p></p>
+    </div>
 </section>
 
 <style>
@@ -626,7 +551,7 @@
         min-width: 28em;
     }
 
-    .selectionLabel {
+    .inputLabel {
         text-align: left;
         font-weight: bold;
     }
@@ -651,6 +576,12 @@
         background-color: yellow;
         color: black;
         border-radius: 3px;
+    }
+
+    hr.thick {
+        border: 3px solid green;
+        border-radius: 5px;
+        width: 90%;
     }
 
 </style>

@@ -1,0 +1,26 @@
+name: main
+on:
+  push:
+    branches: ['overrides']
+
+jobs:
+  netlify-deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: node 16
+        uses: actions/setup-node@v3.5.1
+        with:
+          node-version: 16
+
+      - name: build
+        run: |
+          npm ci && npm run build --server='https://dijon-api.bmlt.io'
+
+      - name: deploy
+        run: |
+          export NETLIFY_AUTH_TOKEN=${{ secrets.NETLIFY_AUTH_TOKEN }}
+          export NETLIFY_SITE_ID=${{ secrets.NETLIFY_SITE_ID }}
+          npx netlify deploy --dir=build --prod
