@@ -40,7 +40,9 @@ export class Meeting {
         this.formats = json.formats.map(f => new Format(f));
         // If last_changed is null in the database, unfortunately the client side library returns the Unix Epoch (1/1/1970) instead.
         // This may end up as 12/31/1969 with a time zone conversion.  Check for this, and fix up if necessary.
-        this.last_changed = getYear(json.lastChanged) <= 1970 ? null : json.lastChanged;
+        // Currently the client side library always returns a date, but in case the auto-generated code gets fixed sometime, also
+        // handle a null json.lastChanged date correctly.
+        this.last_changed = json.lastChanged && getYear(json.lastChanged) <= 1970 ? null : json.lastChanged;
     }
 
     dayString() {
