@@ -217,17 +217,6 @@
     }
 
     async function callGenerateSpreadsheet() {
-        // The login form would do something like this. Look at the token getter/setters in the 
-        // DijonApi module. Note there are two layers. Also note that DijonApi is reading/writing
-        // localStorage for you. Note that we are not yet doing anything with refreshTokens.
-        // try {
-        //     const token = await DijonApi.createToken('dijon', 'dijon');
-        //     DijonApi.token = token;
-        // } catch (error) {
-        //     if (error.response.status === 401) {
-        //         // This means username and password were incorrect
-        //     }
-        // }
         generateSpreadsheetError = await generateSpreadsheet(selectedRootServer, allServiceBodies, selectedServiceBody,
             startSnapshot, endSnapshot, showOriginalNawsCodes, includeExtraMeetings, excludeWorldIdUpdates);
     }

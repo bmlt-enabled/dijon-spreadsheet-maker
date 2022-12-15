@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { format, getYear } from 'date-fns';
 import { Format } from '$lib/Format';
 import { ServiceBody } from '$lib/ServiceBody';
 import { stringToDate } from '$lib/DateUtils';
@@ -38,7 +38,9 @@ export class Meeting {
         this.naws_code_override = json.nawsCodeOverride;
         this.service_body = new ServiceBody(json.serviceBody);
         this.formats = json.formats.map(f => new Format(f));
-        this.last_changed = json.lastChanged;
+        // If last_changed is null in the database, unfortunately the client side library returns the Unix Epoch (1/1/1970) instead.
+        // This may end up as 12/31/1969 with a time zone conversion.  Check for this, and fix up if necessary.
+        this.last_changed = getYear(json.lastChanged) <= 1970 ? null : json.lastChanged;
     }
 
     dayString() {
