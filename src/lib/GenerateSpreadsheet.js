@@ -1,11 +1,11 @@
 // export a function generateSpreadsheet that generates a spreadsheet of changes, new meetings, and deletions
 // generateSpreadsheet returns null if successful, otherwise an error string
 
-import { format } from 'date-fns';
 import * as XLSX from 'xlsx-js-style';  // the open source version of SheetJS doesn't handle styling - use this fork instead
 import { Change } from '$lib/Change';
 import { Meeting } from '$lib/Meeting';
 import DijonApi from '$lib/DijonApi';
+import { dateToFormattedString } from '$lib/DateUtils';
 
 // styles for export spreadsheet
 const headerStyle = {font: {bold: true}};
@@ -18,8 +18,8 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
     let ws = XLSX.utils.aoa_to_sheet([exportSpreadsheetHeaders(showOriginalNawsCodes)]);
     styleEntireRow(ws, 0, headerStyle);
 
-    const startSnapshotDateStr = format(startSnapshot.date, 'yyyy-MM-dd');
-    const endSnapshotDateStr = format(endSnapshot.date, 'yyyy-MM-dd');
+    const startSnapshotDateStr = dateToFormattedString(startSnapshot.date);
+    const endSnapshotDateStr = dateToFormattedString(endSnapshot.date);
 
     let rawChanges;
     try {

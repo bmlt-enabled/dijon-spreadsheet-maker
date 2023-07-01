@@ -1,7 +1,6 @@
-import { format, getYear } from 'date-fns';
 import { Format } from '$lib/Format';
 import { ServiceBody } from '$lib/ServiceBody';
-import { stringToDate } from '$lib/DateUtils';
+import { dateToFormattedString } from '$lib/DateUtils';
 
 export class Meeting {
 
@@ -38,11 +37,11 @@ export class Meeting {
         this.naws_code_override = json.nawsCodeOverride;
         this.service_body = new ServiceBody(json.serviceBody);
         this.formats = json.formats.map(f => new Format(f));
-        // If last_changed is null in the database, unfortunately the client side library returns the Unix Epoch (1/1/1970) instead.
-        // This may end up as 12/31/1969 with a time zone conversion.  Check for this, and fix up if necessary.
+        // If last_changed is null in the database, the client side library returns the Unix Epoch (1/1/1970) instead.
+        // Check for this, and fix up if necessary.
         // Currently the client side library always returns a date, but in case the auto-generated code gets fixed sometime, also
         // handle a null json.lastChanged date correctly.
-        this.last_changed = json.lastChanged && getYear(json.lastChanged) <= 1970 ? null : json.lastChanged;
+        this.last_changed = json.lastChanged && json.lastChanged.getUTCFullYear() <= 1970 ? null : json.lastChanged;
     }
 
     dayString() {
@@ -148,7 +147,7 @@ export class Meeting {
 
     lastChangedExcelFormat() {
         if ( this.last_changed ) {
-            return format(this.last_changed, 'MM/dd/yyy');
+            return dateToFormattedString(this.last_changed);
         } else {
             return '';
         }

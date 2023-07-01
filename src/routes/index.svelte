@@ -4,30 +4,29 @@
 
 <script>
     import { onMount } from 'svelte';
-    import { format, isEqual, isBefore } from 'date-fns';
     import { DateInput } from 'date-picker-svelte';
     import { Server } from '$lib/Server';
-    import { ServiceBody } from '$lib/ServiceBody'; 
-    import { Snapshot } from '$lib/Snapshot';
-    import { makePureDate } from '$lib/DateUtils';
+    import { ServiceBody } from '$lib/ServiceBody';
+    import { dateToFormattedString, utcDateToCalendarDate, calendarDatetoUtcDate } from '$lib/DateUtils';
     import { generateSpreadsheet } from '$lib/GenerateSpreadsheet';
     import { uploadNawsCodes } from '$lib/UploadNawsCodes';
     import DijonApi from '$lib/DijonApi';
 
+    // times are all in UTC, *except* to/from the DateInput widget
     let rootServers;
     let selectedRootServer;
-    let snapshots;         // all snapshots for the selected server
-    let firstSnapshot;     // first snapshot for the selected server
-    let lastSnapshot;      // last snapshot for the selected server
-    let rawStartDate;      // start date as selected from the calendar
-    let startDate;         // start date with time set to the default (midnight in current time zone)
-    let rawEndDate;        // end date as selected from the calendar
-    let endDate;           // end date with time set to the default (midnight in current time zone)
-    let startSnapshot;     // closest available snapshot on or before startDate
-    let endSnapshot;       // closest available snapshot on or before endDate
-    let allServiceBodies;  // service bodies for the root server as of last snapshot date
+    let snapshots;          // all snapshots for the selected server
+    let firstSnapshot;      // first snapshot for the selected server
+    let lastSnapshot;       // last snapshot for the selected server
+    let calendarStartDate;  // start date as selected from the calendar
+    let startDate;          // start date in UTC
+    let calendarEndDate;    // end date as selected from the calendar
+    let endDate;            // end date in UTC
+    let startSnapshot;      // closest available snapshot on or before startDate
+    let endSnapshot;        // closest available snapshot on or before endDate
+    let allServiceBodies;   // service bodies for the root server as of last snapshot date
     let selectFromOnlyZonesAndRegions = true;
-    let serviceBodies;     // service bodies to show in menu
+    let serviceBodies;      // service bodies to show in menu
     let selectedServiceBody;
     let showOriginalNawsCodes = false;
     let includeExtraMeetings = true;
@@ -62,17 +61,17 @@
         fetchRootServers();
     });
 
-    $: rawStartDate && (startDate = makePureDate(rawStartDate));
-    $: rawEndDate && (endDate = makePureDate(rawEndDate));
+    $: calendarStartDate && (startDate = calendarDatetoUtcDate(calendarStartDate));
+    $: calendarEndDate && (endDate = calendarDatetoUtcDate(calendarEndDate));
     $: selectedRootServer && startDate && (startSnapshot = findSnapshot(startDate));
     $: selectedRootServer && endDate && (endSnapshot = findSnapshot(endDate));
     $: selectedRootServer && endSnapshot && fetchServiceBodies(selectedRootServer, endSnapshot);
-    $: selectedRootServer && startSnapshot && endSnapshot && (dateSelectionError = isBefore(startSnapshot.date, endSnapshot.date) ? null :
+    $: selectedRootServer && startSnapshot && endSnapshot && (dateSelectionError = (startSnapshot.date.valueOf() < endSnapshot.date.valueOf()) ? null :
         'Error: start snapshot must be before end snapshot');
-    $: selectedRootServer && startDate && startSnapshot && (missingStartSnapshotWarning = isEqual(startSnapshot.date,startDate) ? null :
-        `Warning: couldn't find a snapshot on the exact start date -- using one from ${format(startSnapshot.date, 'yyyy-MM-dd')} instead`);
-    $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = isEqual(endSnapshot.date,endDate) ? null :
-        `Warning: couldn't find a snapshot on the exact end date -- using one from ${format(endSnapshot.date, 'yyyy-MM-dd')} instead`);
+    $: selectedRootServer && startDate && startSnapshot && (missingStartSnapshotWarning = (startSnapshot.date.valueOf() == startDate.valueOf()) ? null :
+        `Warning: couldn't find a snapshot on the exact start date -- using one from ${dateToFormattedString(startSnapshot.date)} instead`);
+    $: selectedRootServer && endDate && endSnapshot && (missingEndSnapshotWarning = (endSnapshot.date.valueOf() == endDate.valueOf()) ? null :
+        `Warning: couldn't find a snapshot on the exact end date -- using one from ${dateToFormattedString(endSnapshot.date)} instead`);
     $: errors = concatErrorsOrWarnings(rootServersError, snapshotsError, serviceBodiesError, dateSelectionError, generateSpreadsheetError);
     $: warnings = concatErrorsOrWarnings(missingStartSnapshotWarning, missingEndSnapshotWarning);
 
@@ -107,7 +106,7 @@
         const _snapshots = [];
         try {
             for (const snapshot of await DijonApi.listRootServerSnapshots(selectedRootServer.id)) {
-                _snapshots.push(new Snapshot(snapshot.rootServerId, format(snapshot.date, 'yyyy-MM-dd')));
+                _snapshots.push(snapshot);
             };
         } catch (error) {
             snapshotsError = `Error fetching snapshots - got ${error.response.status}`;
@@ -126,13 +125,14 @@
                 lastSnapshot = snapshots[i];
             }
         }
+
         // If there is already a start or end date selected, check if it is still valid for the snapshots.  (This arises if the user has already
         // selected a server and dates, and then selects a different server.)  If the selected start or end date is no longer valid, set it to null
         // so that there is no longer a selected date.  If it is still valid, find the new start and end snaphots.  This avoids erasing the dates if
         // it's not necessary.
         if (startDate) {
             if (startDate < firstSnapshot.date || startDate > lastSnapshot.date) {
-                rawStartDate = null;
+                calendarStartDate = null;
                 startDate = null;
             } else {
                 startSnapshot = findSnapshot(startDate);
@@ -140,7 +140,7 @@
         }
         if (endDate) {
             if (endDate < firstSnapshot.date || endDate > lastSnapshot.date) {
-                rawEndDate = null;
+                calendarEndDate = null;
                 endDate = null;
             } else {
                 endSnapshot = findSnapshot(endDate);
@@ -156,10 +156,11 @@
     }
 
     async function fetchServiceBodies(server, snapshot) {
+
         if ( server && snapshot ) {
             let rawServiceBodies;
             try {
-                rawServiceBodies = await DijonApi.listSnapshotServiceBodies(server.id, format(snapshot.date, 'yyyy-MM-dd'));
+                rawServiceBodies = await DijonApi.listSnapshotServiceBodies(server.id, dateToFormattedString(snapshot.date));
             } catch (error) {
                 serviceBodiesError = `Error fetching service bodies - got ${error.response.status}`
                 return;
@@ -285,8 +286,8 @@
             <td class="inputLabel">Start Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
-                    <DateInput format="yyyy-MM-dd" placeholder={format(firstSnapshot.date, "yyy-MM-dd")}
-                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawStartDate} />
+                    <DateInput format="yyyy-MM-dd" placeholder={dateToFormattedString(firstSnapshot.date)}
+                        min={utcDateToCalendarDate(firstSnapshot.date)} max={utcDateToCalendarDate(lastSnapshot.date)} bind:value={calendarStartDate} />
                 {:else}
                     [select a server for available snapshot dates]
                 {/if}
@@ -296,8 +297,8 @@
             <td class="inputLabel">End Date:</td>
             <td>
                 {#if rootServers && snapshots && firstSnapshot && lastSnapshot}
-                    <DateInput format="yyyy-MM-dd" placeholder={format(lastSnapshot.date, "yyy-MM-dd")}
-                        min={firstSnapshot.date} max={lastSnapshot.date} bind:value={rawEndDate} />
+                    <DateInput format="yyyy-MM-dd" placeholder={dateToFormattedString(lastSnapshot.date)}
+                        min={utcDateToCalendarDate(firstSnapshot.date)} max={utcDateToCalendarDate(lastSnapshot.date)} bind:value={calendarEndDate} />
                 {/if}
             </td>
         </tr>
@@ -375,27 +376,27 @@
         </tr>
         <tr>
             <td>Date of first snapshot:</td>
-            <td class="informationItem">{firstSnapshot ? format(firstSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{firstSnapshot ? dateToFormattedString(firstSnapshot.date) : '?'}</td>
         </tr>
         <tr>
             <td>Date of most recent snapshot:</td>
-            <td class="informationItem">{lastSnapshot ? format(lastSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{lastSnapshot ? dateToFormattedString(lastSnapshot.date) : '?'}</td>
         </tr>
         <tr>
             <td>Start date:</td>
-            <td class="informationItem">{startDate ? format(startDate, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{startDate ? dateToFormattedString(startDate) : '?'}</td>
         </tr>
         <tr>
             <td>End date:</td>
-            <td class="informationItem">{endDate ? format(endDate, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{endDate ? dateToFormattedString(endDate) : '?'}</td>
         </tr>
         <tr>
             <td>Closest snapshot for start date:</td>
-            <td class="informationItem">{startSnapshot ? format(startSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{startSnapshot ? dateToFormattedString(startSnapshot.date) : '?'}</td>
         </tr>
         <tr>
             <td>Closest snapshot for end date:</td>
-            <td class="informationItem">{endSnapshot ? format(endSnapshot.date, 'yyyy-MM-dd') : '?'}</td>
+            <td class="informationItem">{endSnapshot ? dateToFormattedString(endSnapshot.date) : '?'}</td>
         </tr>
         <tr>
             <td> Number of service bodies as of end date:</td>
