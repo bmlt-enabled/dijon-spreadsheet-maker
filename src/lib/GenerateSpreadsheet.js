@@ -30,6 +30,7 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
 
     // Dictionaries to keep track of meetings with changes, indexed by world_id and bmlt_id respectively.  The keys
     // are the important part; the value will be true if a meeting with that world_id or bmlt_id was changed.
+    // World IDs are converted to upper case when used as a key in worldIdsWithChanges so that for example G1234 matches g1234.
     const worldIdsWithChanges = {};
     const bmltIdsWithChanges = {};
     let lastRow = 0;
@@ -44,14 +45,18 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
                 newRow = getRowForMeeting(newMeeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, newMeetingStyle);
-                worldIdsWithChanges[newMeeting.world_id] = true;
+                if (newMeeting.world_id) {
+                    worldIdsWithChanges[newMeeting.world_id.toUpperCase()] = true;
+                }
                 bmltIdsWithChanges[newMeeting.bmlt_id] = true;
                 break;
             case 'MeetingDeleted':
                 oldRow = getRowForMeeting(oldMeeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, oldRow, lastRow, showOriginalNawsCodes);
                 styleEntireRow(ws, lastRow, deletedMeetingStyle);
-                worldIdsWithChanges[oldMeeting.world_id] = true;
+                if (oldMeeting.world_id) {
+                    worldIdsWithChanges[oldMeeting.world_id.toUpperCase()] = true;
+                }
                 // the old_meeting won't be in the current meetings
                 break;
             case 'MeetingUpdated':
@@ -60,8 +65,12 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
                 addMeetingData(ws, newRow, lastRow, showOriginalNawsCodes);
                 styleChangedCells(ws, lastRow, changedMeetingStyle, oldRow, newRow);
                 // these will probably be the same for the old and new meetings, but add them both anyway to be safe
-                worldIdsWithChanges[oldMeeting.world_id] = true;
-                worldIdsWithChanges[newMeeting.world_id] = true;
+                if (oldMeeting.world_id) {
+                    worldIdsWithChanges[oldMeeting.world_id.toUpperCase()] = true;
+                }
+                if (newMeeting.world_id) {
+                    worldIdsWithChanges[newMeeting.world_id.toUpperCase()] = true;
+                }
                 bmltIdsWithChanges[oldMeeting.bmlt_id] = true;
                 bmltIdsWithChanges[newMeeting.bmlt_id] = true;
                 break;
@@ -70,6 +79,7 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
         }
     }
     // If includeExtraMeetings is true, add other meetings to the spreadsheet with the same world_id as a changed meeting.
+    // Ignore meetings with world_ids of 'x' or 'X'.
     if (includeExtraMeetings) {
         let rawMeetings;
         try {
@@ -80,7 +90,7 @@ export async function generateSpreadsheet(selectedRootServer, allServiceBodies, 
 
         for (let rawMeeting of rawMeetings) {
             const meeting = new Meeting(rawMeeting);
-            if (meeting.world_id && meeting.world_id in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
+            if (meeting.world_id && meeting.world_id.toUpperCase()!=='X' && meeting.world_id.toUpperCase() in worldIdsWithChanges && !(meeting.bmlt_id in bmltIdsWithChanges)) {
                 lastRow++;
                 const row = getRowForMeeting(meeting, allServiceBodies, showOriginalNawsCodes);
                 addMeetingData(ws, row, lastRow, showOriginalNawsCodes);
